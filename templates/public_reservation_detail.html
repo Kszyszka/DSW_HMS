@@ -40,7 +40,23 @@
                     <div class="alert alert-info">
                         Pre-checkin dostępny — <a href="{% url 'pre_checkin' reservation.id %}" class="btn btn-sm btn-primary">Wygeneruj kod PIN</a>
                     </div>
-                {% endif %} 
+                {% endif %}
+
+                {% if has_online_pending %}
+                    <div class="mb-3">
+                        <a href="{% url 'online_payment_test' reservation.id %}" class="btn btn-warning">Spróbuj ponownie płatność online</a>
+                    </div>
+                {% endif %}
+
+                {% if not show_access_pin and not precheckin_allowed %}
+                    {% if paid_online %}
+                        <div class="alert alert-info">Rezerwacja opłacona online. Kod PIN pojawi się 24 godziny przed zameldowaniem.</div>
+                    {% elif has_online_pending %}
+                        <div class="alert alert-info">Płatność online oczekuje — po opłaceniu kod PIN zostanie wygenerowany 24 godziny przed zameldowaniem.</div>
+                    {% else %}
+                        <div class="alert alert-info">Kod PIN pojawi się 24 godziny przed zameldowaniem, jeżeli rezerwacja zostanie opłacona online.</div>
+                    {% endif %}
+                {% endif %}
 
                 <hr>
                 <p class="text-muted">Aby ponownie zobaczyć tę stronę, otwórz następujący adres w przeglądarce:</p>

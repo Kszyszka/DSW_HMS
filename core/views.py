@@ -128,6 +128,8 @@ def guest_reservation_detail(request, reservation_id):
     except Exception:
         pass
 
+    has_online_pending = payments.filter(payment_method='online', payment_status='pending').exists()
+
     context = {
         'reservation': reservation,
         'payments': payments,
@@ -136,6 +138,7 @@ def guest_reservation_detail(request, reservation_id):
         'access_pin': access_pin,
         'precheckin_allowed': precheckin_allowed,
         'paid_online': paid_online,
+        'has_online_pending': has_online_pending,
     }
     return render(request, 'guest/reservation_detail.html', context)
 
@@ -439,13 +442,18 @@ def public_create_reservation(request):
                 return redirect('public_reservation_detail', reservation_id=reservation.id)
             else:
                 # online
-                Payment.objects.create(
-                    reservation=reservation,
-                    amount=price_total,
-                    payment_date=date.today(),
-                    payment_method='online',
-                    payment_status='pending'
-                )
+                try:
+                    Payment.objects.create(
+                        reservation=reservation,
+                        amount=price_total,
+                        payment_date=date.today(),
+                        payment_method='online',
+                        payment_status='pending'
+                    )
+                except Exception as e:
+                    messages.error(request, f'Błąd podczas inicjowania płatności: {str(e)}. Możesz spróbować ponownie na stronie rezerwacji.')
+                    return redirect('public_reservation_detail', reservation_id=reservation.id)
+
                 # Przy rezerwacji z płatnością online ustaw wstępny PIN dla pokoju
                 try:
                     room.set_new_pin()
@@ -494,6 +502,8 @@ def public_reservation_detail(request, reservation_id):
     except Exception:
         pass
 
+    has_online_pending = payments.filter(payment_method='online', payment_status='pending').exists()
+
     context = {
         'reservation': reservation,
         'payments': payments,
@@ -501,6 +511,7 @@ def public_reservation_detail(request, reservation_id):
         'access_pin': access_pin,
         'precheckin_allowed': precheckin_allowed,
         'paid_online': paid_online,
+        'has_online_pending': has_online_pending,
     }
     return render(request, 'public_reservation_detail.html', context) 
 
@@ -539,30 +550,36 @@ def online_payment_test(request, reservation_id):
     payment = Payment.objects.filter(reservation=reservation, payment_method='online').first()
 
     if request.method == 'POST':
-        # Oznacz płatność jako zrealizowaną
-        if payment:
+        # brak powiązanej płatności -> poinformuj i pozwól ponowić próbę
+        if not payment:
+            messages.error(request, 'Nie znaleziono płatności online powiązanej z tą rezerwacją. Spróbuj ponownie na stronie rezerwacji.')
+            return redirect('public_reservation_detail', reservation_id=reservation.id)
+
+        try:
+            # Oznacz płatność jako zrealizowaną
             payment.payment_status = 'completed'
             payment.transaction_id = 'TEST_TXN_%s' % reservation.id
             payment.save()
-        # Ustaw status rezerwacji i pokoju
-        reservation.status = 'confirmed'
-        reservation.room.status = 'reserved'
-        # Jeśli do zameldowania pozostało mniej lub równo 1 dzień -> wygeneruj nowy PIN (pre-checkin)
-        try:
+
+            # Ustaw status rezerwacji i pokoju
+            reservation.status = 'confirmed'
+            reservation.room.status = 'reserved'
+
+            # Jeśli do zameldowania pozostało mniej lub równo 1 dzień -> wygeneruj nowy PIN (pre-checkin)
             today = timezone.localdate()
             delta = (reservation.check_in_date - today).days
             if delta <= 1:
-                # regenerate PIN for room
                 reservation.room.set_new_pin()
                 reservation.pin_assigned_at = timezone.now()
                 reservation.save(update_fields=['pin_assigned_at'])
-        except Exception:
-            pass
 
-        reservation.room.save()
-        reservation.save()
-        messages.success(request, 'Płatność została zakończona (symulacja).')
-        return redirect('public_reservation_detail', reservation_id=reservation.id)
+            reservation.room.save()
+            reservation.save()
+            messages.success(request, 'Płatność została zakończona (symulacja).')
+            return redirect('public_reservation_detail', reservation_id=reservation.id)
+        except Exception as e:
+            messages.error(request, f'Błąd podczas przetwarzania płatności: {str(e)}. Możesz spróbować ponownie na stronie rezerwacji.')
+            return redirect('public_reservation_detail', reservation_id=reservation.id)
 
     context = {
         'reservation': reservation,
@@ -888,13 +905,18 @@ def employee_create_reservation(request):
                 messages.success(request, 'Rezerwacja została utworzona.')
                 return redirect('employee:reservation_detail', reservation_id=reservation.id)
             else:
-                Payment.objects.create(
-                    reservation=reservation,
-                    amount=price_total,
-                    payment_date=date.today(),
-                    payment_method='online',
-                    payment_status='pending'
-                )
+                try:
+                    Payment.objects.create(
+                        reservation=reservation,
+                        amount=price_total,
+                        payment_date=date.today(),
+                        payment_method='online',
+                        payment_status='pending'
+                    )
+                except Exception as e:
+                    messages.error(request, f'Błąd podczas inicjowania płatności: {str(e)}. Możesz spróbować ponownie na stronie rezerwacji.')
+                    return redirect('employee:reservation_detail', reservation_id=reservation.id)
+
                 # Wstępny PIN dla rezerwacji online
                 try:
                     room.set_new_pin()
@@ -993,17 +1015,28 @@ def housekeeping_dashboard(request):
             messages.error(request, f'Błąd: {str(e)}')
         return redirect('employee:housekeeping')
 
-    rooms = Room.objects.filter(status='to_clean').order_by('number')
-    rooms_data = []
-    for room in rooms:
+    # Pokoje z nie rozwiązanymi usterkami (bez względu na status, np. 'maintenance')
+    rooms_with_unresolved = Room.objects.filter(issues__is_resolved=False).distinct().order_by('number')
+
+    rooms_with_issues = []
+    for room in rooms_with_unresolved:
         unresolved = room.issues.filter(is_resolved=False)
-        rooms_data.append({
+        rooms_with_issues.append({
             'room': room,
             'unresolved_issues': unresolved,
         })
 
-    rooms_with_issues = [r for r in rooms_data if r['unresolved_issues'].exists()]
-    rooms_without_issues = [r for r in rooms_data if not r['unresolved_issues'].exists()]
+    # Pokoje "do posprzątania" bez nie rozwiązanych usterek
+    rooms_to_clean = Room.objects.filter(status='to_clean').order_by('number')
+    unresolved_ids = {r['room'].id for r in rooms_with_issues}
+
+    rooms_without_issues = []
+    for room in rooms_to_clean:
+        if room.id in unresolved_ids:
+            continue
+        rooms_without_issues.append({
+            'room': room,
+        })
 
     context = {
         'rooms_with_issues': rooms_with_issues,
@@ -1326,6 +1359,7 @@ def employee_reservation_detail(request, reservation_id):
         'access_pin': access_pin,
         'precheckin_allowed': precheckin_allowed,
         'paid_online': paid_online,
+        'has_online_pending': payments.filter(payment_method='online', payment_status='pending').exists(),
     }
     return render(request, 'employee/reservation_detail.html', context) 
 

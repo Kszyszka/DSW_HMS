@@ -176,7 +176,6 @@ class RoomIssue(models.Model):
 
 
 class Season(models.Model):
-    """Sezony / polityka cenowa dla zakresów dat. Ceny mogą być przypisane per-room lub jako modyfikatory"""
     name = models.CharField(max_length=200)
     identifier = models.CharField(max_length=50, unique=True)
     start_date = models.DateField()
@@ -216,10 +215,7 @@ class Season(models.Model):
 
 
 class SeasonPrice(models.Model):
-    """Cena lub modyfikator przypisany do sezonu (opcjonalnie do konkretnego pokoju)
-    - price_override: ustawia konkretną cenę za noc
-    - price_modifier_percent: procentowa zmiana bazowej ceny (np. 10.0 oznacza +10%)
-    """
+    """Cena lub modyfikator przypisany do sezonu (opcjonalnie do konkretnego pokoju)"""
     season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name='prices')
     room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.CASCADE, related_name='season_prices')
     price_override = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
