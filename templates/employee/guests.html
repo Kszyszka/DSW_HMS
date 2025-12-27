@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %}Zarządzanie Gośćmi - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <h2><i class="bi bi-people"></i> Zarządzanie Gośćmi</h2>
+        <hr>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-10">
+                        <input type="text" class="form-control" name="search" placeholder="Szukaj po imieniu, nazwisku lub emailu..." value="{{ search_query }}">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Szukaj
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                {% if guests %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Imię i Nazwisko</th>
+                                    <th>Email</th>
+                                    <th>Telefon</th>
+                                    <th>Data rejestracji</th>
+                                    <th>Akcje</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for guest in guests %}
+                                <tr>
+                                    <td>{{ guest.name }} {{ guest.surname }}</td>
+                                    <td>{{ guest.email }}</td>
+                                    <td>{{ guest.phone }}</td>
+                                    <td>{{ guest.created_at|date:"Y-m-d" }}</td>
+                                    <td>
+                                        <a href="{% url 'employee:guest_detail' guest.id %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye"></i> Szczegóły
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Brak gości w systemie.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

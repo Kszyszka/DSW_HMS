@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{% block title %}Panel Gościa - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <h2><i class="bi bi-house-door"></i> Panel Gościa</h2>
+        <hr>
+    </div>
+</div>
+
+<div class="row">
+    {% if not is_superuser %}
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-person"></i> Profil</h5>
+                <p class="card-text">
+                    <strong>{{ guest.name }} {{ guest.surname }}</strong><br>
+                    {{ guest.email }}<br>
+                    {{ guest.phone }}
+                </p>
+                <a href="{% url 'guest:profile' %}" class="btn btn-sm btn-outline-primary">Edytuj Profil</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-shield-check"></i> Administrator</h5>
+                <p class="card-text">
+                    <strong>{{ user.get_full_name|default:user.username }}</strong><br>
+                    {{ user.email }}<br>
+                    <span class="badge bg-warning">Superuser</span>
+                </p>
+                <a href="/admin/" class="btn btn-sm btn-outline-warning" target="_blank">Panel Admin</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <div class="{% if is_superuser %}col-md-12{% else %}col-md-8{% endif %}">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5><i class="bi bi-calendar-check"></i> Nadchodzące Rezerwacje</h5>
+            </div>
+            <div class="card-body">
+                {% if upcoming_reservations %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Pokój</th>
+                                    <th>Zameldowanie</th>
+                                    <th>Wymeldowanie</th>
+                                    <th>Status</th>
+                                    <th>Akcje</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for reservation in upcoming_reservations %}
+                                <tr>
+                                    <td>Pokój {{ reservation.room.number }}</td>
+                                    <td>{{ reservation.check_in_date }}</td>
+                                    <td>{{ reservation.check_out_date }}</td>
+                                    <td>
+                                        <span class="badge bg-{% if reservation.status == 'confirmed' %}success{% elif reservation.status == 'pending' %}warning{% else %}secondary{% endif %}">
+                                            {{ reservation.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'guest:reservation_detail' reservation.id %}" class="btn btn-sm btn-outline-primary">
+                                            Szczegóły
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">Brak nadchodzących rezerwacji.</p>
+                {% endif %}
+                {% if not is_superuser %}
+                <a href="{% url 'guest:create_reservation' %}" class="btn btn-primary mt-2">
+                    <i class="bi bi-plus-circle"></i> Nowa Rezerwacja
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-clock-history"></i> Ostatnie Rezerwacje</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_reservations %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Pokój</th>
+                                    <th>Zameldowanie</th>
+                                    <th>Wymeldowanie</th>
+                                    <th>Cena</th>
+                                    <th>Status</th>
+                                    <th>Akcje</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for reservation in recent_reservations %}
+                                <tr>
+                                    <td>Pokój {{ reservation.room.number }}</td>
+                                    <td>{{ reservation.check_in_date }}</td>
+                                    <td>{{ reservation.check_out_date }}</td>
+                                    <td>{{ reservation.price_total }} PLN</td>
+                                    <td>
+                                        <span class="badge bg-{% if reservation.status == 'confirmed' %}success{% elif reservation.status == 'pending' %}warning{% else %}secondary{% endif %}">
+                                            {{ reservation.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'guest:reservation_detail' reservation.id %}" class="btn btn-sm btn-outline-primary">
+                                            Szczegóły
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <a href="{% url 'guest:reservations' %}" class="btn btn-outline-primary mt-2">Zobacz wszystkie</a>
+                {% else %}
+                    <p class="text-muted">Brak rezerwacji.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

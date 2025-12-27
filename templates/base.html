@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Hotel Management System{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .sidebar {
+            min-height: calc(100vh - 56px);
+            background-color: #f8f9fa;
+        }
+        .main-content {
+            min-height: calc(100vh - 56px);
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{% url 'home' %}">
+                <i class="bi bi-building"></i> HMS
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    {% if user.is_authenticated %}
+                        {% if user.is_superuser %}
+                            <!-- Superuser ma dostęp do wszystkich widoków -->
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="guestDropdown" role="button" data-bs-toggle="dropdown">
+                                    <i class="bi bi-person"></i> Widoki Gościa
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{% url 'guest:dashboard' %}">Panel Gościa</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'guest:reservations' %}">Rezerwacje Gości</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'guest:create_reservation' %}">Nowa Rezerwacja</a></li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="employeeDropdown" role="button" data-bs-toggle="dropdown">
+                                    <i class="bi bi-briefcase"></i> Widoki Pracownika
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{% url 'employee:dashboard' %}">Panel Pracownika</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'employee:reservations' %}">Rezerwacje</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'employee:rooms' %}">Pokoje</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'employee:guests' %}">Goście</a></li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/admin/" target="_blank">
+                                    <i class="bi bi-gear"></i> Panel Admin
+                                </a>
+                            </li>
+                        {% elif user.guest_profile %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'guest:dashboard' %}">Panel Gościa</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'guest:reservations' %}">Moje Rezerwacje</a>
+                            </li>
+                        {% elif user.employee_profile %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'employee:dashboard' %}">Panel Pracownika</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'employee:reservations' %}">Rezerwacje</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'employee:rooms' %}">Pokoje</a>
+                            </li>
+                        {% endif %}
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if user.is_authenticated %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-person-circle"></i> {{ user.get_full_name|default:user.username }}
+                            </a>
+                            <ul class="dropdown-menu">
+                                {% if user.is_superuser %}
+                                    <li><a class="dropdown-item" href="/admin/" target="_blank">
+                                        <i class="bi bi-gear"></i> Panel Administracyjny
+                                    </a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                {% elif user.guest_profile %}
+                                    <li><a class="dropdown-item" href="{% url 'guest:profile' %}">Profil</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                {% endif %}
+                                <li><a class="dropdown-item" href="{% url 'logout' %}">
+                                    <i class="bi bi-box-arrow-right"></i> Wyloguj
+                                </a></li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'login' %}">Zaloguj</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show mt-3" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+

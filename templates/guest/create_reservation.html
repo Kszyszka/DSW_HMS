@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %}Nowa Rezerwacja - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <h2><i class="bi bi-plus-circle"></i> Nowa Rezerwacja</h2>
+        <hr>
+        
+        <div class="card">
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="room_id" class="form-label">Pokój</label>
+                        <select class="form-select" id="room_id" name="room_id" required>
+                            <option value="">Wybierz pokój</option>
+                            {% for room in available_rooms %}
+                            <option value="{{ room.id }}" data-price="{{ room.price }}">
+                                Pokój {{ room.number }} - {{ room.get_room_type_display }} ({{ room.price }} PLN/noc)
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="check_in_date" class="form-label">Data zameldowania</label>
+                            <input type="date" class="form-control" id="check_in_date" name="check_in_date" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="check_out_date" class="form-label">Data wymeldowania</label>
+                            <input type="date" class="form-control" id="check_out_date" name="check_out_date" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Uwagi (opcjonalnie)</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Utwórz Rezerwację
+                        </button>
+                        <a href="{% url 'guest:reservations' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Anuluj
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Ustawienie minimalnej daty na dzisiaj
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('check_in_date').setAttribute('min', today);
+    document.getElementById('check_out_date').setAttribute('min', today);
+    
+    // Walidacja dat
+    document.getElementById('check_in_date').addEventListener('change', function() {
+        const checkIn = this.value;
+        const checkOut = document.getElementById('check_out_date');
+        if (checkIn) {
+            checkOut.setAttribute('min', checkIn);
+        }
+    });
+</script>
+{% endblock %}
+{% endblock %}
+
