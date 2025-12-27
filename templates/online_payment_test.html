@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}Płatność - Testowa Bramka{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-6 offset-md-3">
+        <h2>Testowa płatność dla rezerwacji #{{ reservation.id }}</h2>
+        <div class="card mt-3">
+            <div class="card-body">
+                <p>Kwota: <strong>{{ reservation.price_total }} PLN</strong></p>
+                <p>Pokój: Pokój {{ reservation.room.number }}</p>
+                <form method="post">
+                    {% csrf_token %}
+                    <button class="btn btn-success" type="submit">Zapłać (symulacja)</button>
+                    <a href="{% url 'public_reservation_detail' reservation.id %}" class="btn btn-outline-secondary">Anuluj</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

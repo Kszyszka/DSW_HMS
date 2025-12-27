@@ -40,9 +40,58 @@
                                     <td>{{ room.capacity }}</td>
                                     <td>{{ room.price }} PLN</td>
                                     <td>
-                                        <span class="badge bg-{% if room.status == 'available' %}success{% elif room.status == 'occupied' %}danger{% elif room.status == 'reserved' %}warning{% else %}secondary{% endif %}">
-                                            {{ room.get_status_display }}
-                                        </span>
+                                        <form method="post" class="d-flex align-items-center">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="update_status">
+                                            <input type="hidden" name="room_id" value="{{ room.id }}">
+
+                                            <span class="badge bg-{% if room.status == 'available' %}success{% elif room.status == 'occupied' %}danger{% elif room.status == 'reserved' %}warning{% elif room.status == 'to_clean' %}info{% elif room.status == 'maintenance' %}secondary{% else %}secondary{% endif %} me-2">
+                                                {{ room.get_status_display }}
+                                            </span>
+
+                                            <select name="status" class="form-select form-select-sm me-2" style="width:auto;">
+                                                {% for value, label in room.STATUS_CHOICES %}
+                                                    <option value="{{ value }}" {% if room.status == value %}selected{% endif %}>{{ label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <button class="btn btn-sm btn-outline-primary me-2" type="submit">Zmień</button>
+                                            <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#forceModal{{ room.id }}">Wymuś</button>
+                                        </form>
+
+                                        <!-- Force modal -->
+                                        <div class="modal fade" id="forceModal{{ room.id }}" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Wymuś zmianę statusu pokoju {{ room.number }}</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <form method="post">
+                                                        {% csrf_token %}
+                                                        <div class="modal-body">
+                                                            <input type="hidden" name="action" value="update_status">
+                                                            <input type="hidden" name="room_id" value="{{ room.id }}">
+                                                            <div class="mb-3">
+                                                                <label class="form-label">Nowy status</label>
+                                                                <select name="status" class="form-select">
+                                                                    {% for value, label in room.STATUS_CHOICES %}
+                                                                        <option value="{{ value }}" {% if room.status == value %}selected{% endif %}>{{ label }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </div>
+                                                            <div class="alert alert-warning">
+                                                                Zmiana statusu może powodować konflikty z istniejącymi rezerwacjami. Jeśli kontynuujesz, będziesz musiał przenieść lub anulować poniższe rezerwacje.
+                                                            </div>
+                                                            <p class="text-muted">Lista rezerwacji do sprawdzenia zostanie wyświetlona po kliknięciu "Wymuś".</p>
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                                                            <button type="submit" class="btn btn-danger" name="confirm_force" value="yes">Wymuś zmianę</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </td>
                                     <td>
                                         <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#roomModal{{ room.id }}">
@@ -113,6 +162,28 @@
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> Brak pokoi w systemie.
                         <a href="{% url 'employee:room_create' %}" class="alert-link">Dodaj pierwszy pokój</a>
+                    </div>
+                {% endif %}
+
+                {% if conflict_room %}
+                    <div class="mt-4 alert alert-danger">
+                        <h5>Konflikt rezerwacji dla pokoju {{ conflict_room.number }}</h5>
+                        <p>W wybranym terminie znaleziono następujące rezerwacje (pending/confirmed/checked_in):</p>
+                        <ul>
+                            {% for r in conflict_reservations %}
+                                <li>Rezerwacja #{{ r.id }} — {{ r.guest.name }} {{ r.guest.surname }}: {{ r.check_in_date }} → {{ r.check_out_date }} (Status: {{ r.get_status_display }})</li>
+                            {% endfor %}
+                        </ul>
+                        <div class="mt-2">
+                            <form method="post" class="d-inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="update_status">
+                                <input type="hidden" name="room_id" value="{{ conflict_room.id }}">
+                                <input type="hidden" name="status" value="{{ request.POST.status }}">
+                                <button class="btn btn-danger" type="submit" name="confirm_force" value="yes">Wymuś zmianę i zostaw rezerwacje do przeniesienia</button>
+                            </form>
+                            <a href="{% url 'employee:rooms' %}" class="btn btn-secondary ms-2">Anuluj</a>
+                        </div>
                     </div>
                 {% endif %}
             </div>

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Cenniki i Sezony - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-10 offset-md-1">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2><i class="bi bi-percent"></i> Cenniki i Sezony</h2>
+            <div>
+                <a href="/admin/core/season/add/" class="btn btn-primary">Nowy Sezon</a>
+                <a href="/admin/core/seasonprice/add/" class="btn btn-outline-secondary">Nowa Cena</a>
+            </div>
+        </div>
+        <hr>
+
+        {% if seasons %}
+            <div class="list-group">
+                {% for season in seasons %}
+                <div class="list-group-item d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5>{{ season.name }} <small class="text-muted">({{ season.identifier }})</small></h5>
+                        <p class="mb-1">{{ season.start_date }} — {{ season.end_date }} &middot; Priorytet: {{ season.priority }} &middot; Apply to existing: {{ season.apply_to_existing }}</p>
+                        <p class="mb-0">{{ season.description|default:'-' }}</p>
+                    </div>
+                    <div class="text-end">
+                        <a class="btn btn-sm btn-outline-primary" href="/admin/core/season/{{ season.id }}/change/">Edytuj</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="/admin/core/season/{{ season.id }}/">Szczegóły</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-info">Brak zdefiniowanych sezonów.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

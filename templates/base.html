@@ -52,6 +52,7 @@
                                     <li><a class="dropdown-item" href="{% url 'employee:dashboard' %}">Panel Pracownika</a></li>
                                     <li><a class="dropdown-item" href="{% url 'employee:reservations' %}">Rezerwacje</a></li>
                                     <li><a class="dropdown-item" href="{% url 'employee:rooms' %}">Pokoje</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'employee:pricing' %}">Cenniki i Sezony</a></li>
                                     <li><a class="dropdown-item" href="{% url 'employee:guests' %}">Goście</a></li>
                                 </ul>
                             </li>
@@ -75,8 +76,22 @@
                                 <a class="nav-link" href="{% url 'employee:reservations' %}">Rezerwacje</a>
                             </li>
                             <li class="nav-item">
+                            <li class="nav-item">
                                 <a class="nav-link" href="{% url 'employee:rooms' %}">Pokoje</a>
                             </li>
+                            {% if user.is_superuser %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'employee:pricing' %}">Cenniki i Sezony</a>
+                            </li>
+                            {% else %}
+                                {% if user.employee_profile %}
+                                    {% if user.employee_profile.role == 'manager' or user.employee_profile.role == 'admin' %}
+                                        <li class="nav-item">
+                                            <a class="nav-link" href="{% url 'employee:pricing' %}">Cenniki i Sezony</a>
+                                        </li>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
                         {% endif %}
                     {% endif %}
                 </ul>
@@ -104,6 +119,12 @@
                     {% else %}
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'login' %}">Zaloguj</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'guest:register' %}">Zarejestruj</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'guest:create_reservation_public' %}">Zarezerwuj</a>
                         </li>
                     {% endif %}
                 </ul>

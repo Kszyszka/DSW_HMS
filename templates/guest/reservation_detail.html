@@ -97,6 +97,16 @@
                 <h5>Akcje</h5>
             </div>
             <div class="card-body">
+                {% if show_access_pin %}
+                    <div class="alert alert-success mb-3">
+                        <strong>Kod PIN do pokoju:</strong>
+                        <div class="fs-3 mt-2">{{ access_pin }}</div>
+                        <small class="text-muted">Wyświetlany ponieważ rezerwacja została opłacona i jest w zasięgu pre-checkin.</small>
+                    </div>
+                {% elif precheckin_allowed and paid_online %}
+                    <a href="{% url 'pre_checkin' reservation.id %}" class="btn btn-primary w-100 mb-3">Wykonaj Pre-checkin (wygeneruj PIN)</a>
+                {% endif %}
+
                 <a href="{% url 'guest:reservations' %}" class="btn btn-outline-secondary w-100 mb-2">
                     <i class="bi bi-arrow-left"></i> Powrót do listy
                 </a>

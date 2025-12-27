@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Guest, Room, Reservation, Payment, Employee
+from .models import Guest, Room, Reservation, Payment, Employee, Season, SeasonPrice
 
 
 @admin.register(Guest)
@@ -118,6 +118,28 @@ class PaymentAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
+
+
+class SeasonPriceInline(admin.TabularInline):
+    model = SeasonPrice
+    extra = 1
+
+
+@admin.register(Season)
+class SeasonAdmin(admin.ModelAdmin):
+    list_display = ('name', 'identifier', 'start_date', 'end_date', 'priority', 'apply_to_existing')
+    list_filter = ('start_date', 'end_date', 'priority')
+    search_fields = ('name', 'identifier')
+    inlines = (SeasonPriceInline,)
+
+
+@admin.register(SeasonPrice)
+class SeasonPriceAdmin(admin.ModelAdmin):
+    list_display = ('season', 'room', 'price_override', 'price_modifier_percent', 'created_at')
+    list_filter = ('season', 'room')
+    search_fields = ('season__name', 'room__number')
+    raw_id_fields = ('room',)
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(Employee)

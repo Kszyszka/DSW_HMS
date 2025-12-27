@@ -38,8 +38,64 @@
                     </tr>
                     <tr>
                         <th>Pokój:</th>
-                        <td>Pokój {{ reservation.room.number }} ({{ reservation.room.get_room_type_display }})</td>
+                        <td>
+                            <form method="post" class="d-flex align-items-center">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="change_room">
+                                <select name="new_room_id" class="form-select form-select-sm me-2" style="width:auto;">
+                                    <option value="">-- Wybierz pokój --</option>
+                                    {% if include_current and current_room %}
+                                        <option value="{{ current_room.id }}" selected>Pokój {{ current_room.number }} — {{ current_room.get_room_type_display }} (Aktualny)</option>
+                                    {% endif %}
+                                    {% for r, _ in candidate_rooms %}
+                                        <option value="{{ r.id }}" {% if reservation.room.id == r.id %}selected{% endif %}>Pokój {{ r.number }} — {{ r.get_room_type_display }} ({{ r.price }} PLN)</option>
+                                    {% endfor %}
+                                    {% for r, _ in unavailable_rooms %}
+                                        <option value="{{ r.id }}" disabled>Pokój {{ r.number }} — {{ r.get_room_type_display }} (Zajęty)</option>
+                                    {% endfor %}
+                                </select>
+                                <button class="btn btn-sm btn-primary me-2" type="submit">Zmień pokój</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#forceRoomModal">Wymuś</button>
+                            </form>
+                        </td>
                     </tr>
+
+                    <!-- Force room modal (appears when user wants to force-change despite conflicts) -->
+                    <div class="modal fade" id="forceRoomModal" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Wymuś przypisanie pokoju</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form method="post">
+                                    {% csrf_token %}
+                                    <div class="modal-body">
+                                        <input type="hidden" name="action" value="change_room">
+                                        <div class="mb-3">
+                                            <label class="form-label">Wybierz pokój</label>
+                                            <select name="new_room_id" class="form-select">
+                                                {% if include_current and current_room %}
+                                                    <option value="{{ current_room.id }}">Pokój {{ current_room.number }} — {{ current_room.get_room_type_display }} (Aktualny)</option>
+                                                {% endif %}
+                                                {% for r, _ in candidate_rooms %}
+                                                    <option value="{{ r.id }}">Pokój {{ r.number }} — {{ r.get_room_type_display }}</option>
+                                                {% endfor %}
+                                                {% for r, _ in unavailable_rooms %}
+                                                    <option value="{{ r.id }}">Pokój {{ r.number }} — {{ r.get_room_type_display }} (zajęty)</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="alert alert-warning">Zmiana może powodować konflikty z istniejącymi rezerwacjami. Jeśli kontynuujesz, potwierdź wymuszenie.</div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                                        <button type="submit" name="confirm_force" value="yes" class="btn btn-danger">Wymuś przypisanie</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
                     <tr>
                         <th>Zameldowanie:</th>
                         <td>{{ reservation.check_in_date }}</td>
@@ -76,6 +132,16 @@
                     </tr>
                     {% endif %}
                 </table>
+                {% if show_access_pin %}
+                    <div class="alert alert-success mt-3">
+                        <strong>Kod PIN do pokoju:</strong>
+                        <div class="fs-4 mt-2">{{ access_pin }}</div>
+                        <small class="text-muted">Widoczny dla personelu — PIN aktywny dla pobytu.</small>
+                    </div>
+                {% elif precheckin_allowed and paid_online %}
+                    {# allow manual generation by staff via pre_checkin endpoint #}
+                    <a href="{% url 'pre_checkin' reservation.id %}" class="btn btn-sm btn-primary mt-3">Wykonaj pre-checkin (wygeneruj PIN)</a>
+                {% endif %}
             </div>
         </div>
         
@@ -97,6 +163,7 @@
                                     <th>Metoda</th>
                                     <th>Status</th>
                                     <th>ID Transakcji</th>
+                                    <th>Akcje</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -111,7 +178,68 @@
                                         </span>
                                     </td>
                                     <td>{{ payment.transaction_id|default:"-" }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editPaymentModal{{ payment.id }}">Edytuj</button>
+                                        <form method="post" class="d-inline ms-1">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="delete_payment">
+                                            <input type="hidden" name="payment_id" value="{{ payment.id }}">
+                                            <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Usunąć tę płatność?');">Usuń</button>
+                                        </form>
+                                    </td>
                                 </tr>
+
+                                <!-- Edit payment modal -->
+                                <div class="modal fade" id="editPaymentModal{{ payment.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Edytuj Płatność #{{ payment.id }}</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <form method="post">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="action" value="edit_payment">
+                                                <input type="hidden" name="payment_id" value="{{ payment.id }}">
+                                                <div class="modal-body">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Kwota (PLN)</label>
+                                                        <input type="number" step="0.01" class="form-control" name="amount" value="{{ payment.amount }}" required>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Data płatności</label>
+                                                        <input type="date" class="form-control" name="payment_date" value="{{ payment.payment_date }}" required>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Metoda płatności</label>
+                                                        <select class="form-select" name="payment_method" required>
+                                                            <option value="cash" {% if payment.payment_method == 'cash' %}selected{% endif %}>Gotówka</option>
+                                                            <option value="card" {% if payment.payment_method == 'card' %}selected{% endif %}>Karta</option>
+                                                            <option value="transfer" {% if payment.payment_method == 'transfer' %}selected{% endif %}>Przelew</option>
+                                                            <option value="online" {% if payment.payment_method == 'online' %}selected{% endif %}>Online</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Status</label>
+                                                        <select class="form-select" name="payment_status" required>
+                                                            <option value="completed" {% if payment.payment_status == 'completed' %}selected{% endif %}>Zrealizowana</option>
+                                                            <option value="pending" {% if payment.payment_status == 'pending' %}selected{% endif %}>Oczekująca</option>
+                                                            <option value="failed" {% if payment.payment_status == 'failed' %}selected{% endif %}>Nieudana</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">ID Transakcji (opcjonalnie)</label>
+                                                        <input type="text" class="form-control" name="transaction_id" value="{{ payment.transaction_id }}">
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                                                    <button type="submit" class="btn btn-primary">Zapisz</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
                                 {% endfor %}
                             </tbody>
                         </table>

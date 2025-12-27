@@ -15,9 +15,23 @@
                 
                 {% if not user.is_authenticated %}
                     <div class="mt-4">
-                        <a href="{% url 'login' %}" class="btn btn-primary btn-lg">
-                            <i class="bi bi-box-arrow-in-right"></i> Zaloguj się
-                        </a>
+                        <div class="row g-3 justify-content-center">
+                            <div class="col-md-3">
+                                <a href="{% url 'login' %}" class="btn btn-primary btn-lg w-100">
+                                    <i class="bi bi-box-arrow-in-right"></i> Zaloguj się
+                                </a>
+                            </div>
+                            <div class="col-md-3">
+                                <a href="{% url 'guest:register' %}" class="btn btn-outline-primary btn-lg w-100">
+                                    <i class="bi bi-person-plus"></i> Zarejestruj
+                                </a>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="{% url 'guest:create_reservation_public' %}" class="btn btn-success btn-lg w-100">
+                                    <i class="bi bi-calendar-plus"></i> Zarezerwuj bez logowania
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 {% else %}
                     <div class="mt-4">

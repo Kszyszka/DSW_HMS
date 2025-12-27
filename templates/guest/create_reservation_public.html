@@ -5,24 +5,63 @@
 {% block content %}
 <div class="row mt-4">
     <div class="col-md-8 offset-md-2">
-        <h2><i class="bi bi-plus-circle"></i> Nowa Rezerwacja</h2>
+        <h2><i class="bi bi-plus-circle"></i> Nowa Rezerwacja (bez logowania)</h2>
         <hr>
-        
         <div class="card">
             <div class="card-body">
                 <form method="post">
                     {% csrf_token %}
-                    <div class="mb-3">
-                        <label for="room_id" class="form-label">Pokój</label>
-                        <select class="form-select" id="room_id" name="room_id" required>
-                            <option value="">Wybierz pokój</option>
-                            {% for room in available_rooms %}
-                            <option value="{{ room.id }}" data-price="{{ room.price }}" data-capacity="{{ room.capacity }}">
-                                Pokój {{ room.number }} - {{ room.get_room_type_display }} ({{ room.price }} PLN/noc) — pojemność: {{ room.capacity }}
-                            </option>
-                            {% endfor %}
-                        </select>
+
+                    <h5>Dane gościa</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Imię</label>
+                            <input type="text" name="name" class="form-control" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nazwisko</label>
+                            <input type="text" name="surname" class="form-control" required>
+                        </div>
                     </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">E-mail</label>
+                            <input type="email" name="email" class="form-control" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Telefon</label>
+                            <input type="text" name="phone" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" value="on" id="create_account" name="create_account">
+                        <label class="form-check-label" for="create_account">
+                            Chcę założyć konto
+                        </label>
+                    </div>
+
+                    <div id="account_fields" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Nazwa użytkownika (opcjonalnie)</label>
+                            <input type="text" name="username" class="form-control" placeholder="Jeśli puste użyty zostanie e-mail">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Hasło</label>
+                                <input type="password" name="password" class="form-control">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Powtórz hasło</label>
+                                <input type="password" name="password2" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <h5>Rezerwacja</h5>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
@@ -41,10 +80,14 @@
                             <input type="number" min="1" max="10" name="number_of_guests" id="number_of_guests" class="form-control" value="1" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Forma płatności</label>
-                            <select class="form-select" name="payment_method" id="payment_method">
-                                <option value="cash">Gotówka</option>
-                                <option value="online">Płatność online (test)</option>
+                            <label for="room_id" class="form-label">Pokój</label>
+                            <select class="form-select" id="room_id" name="room_id" required>
+                                <option value="">Wybierz pokój</option>
+                                {% for room in available_rooms %}
+                                <option value="{{ room.id }}" data-price="{{ room.price }}" data-capacity="{{ room.capacity }}">
+                                    Pokój {{ room.number }} - {{ room.get_room_type_display }} ({{ room.price }} PLN/noc) — pojemność: {{ room.capacity }}
+                                </option>
+                                {% endfor %}
                             </select>
                         </div>
                     </div>
@@ -52,17 +95,25 @@
                     <div id="no_rooms_alert" class="alert alert-danger" style="display:none;">
                         Brak dostępnych pokoi dla wybranej liczby gości.
                     </div>
-                    
+
+                    <div class="mb-3">
+                        <label class="form-label">Forma płatności</label>
+                        <select class="form-select" name="payment_method" id="payment_method">
+                            <option value="cash">Gotówka</option>
+                            <option value="online">Płatność online (test)</option>
+                        </select>
+                    </div>
+
                     <div class="mb-3">
                         <label for="notes" class="form-label">Uwagi (opcjonalnie)</label>
                         <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
                     </div>
-                    
+
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-check-circle"></i> Utwórz Rezerwację
                         </button>
-                        <a href="{% url 'guest:reservations' %}" class="btn btn-outline-secondary">
+                        <a href="{% url 'home' %}" class="btn btn-outline-secondary">
                             <i class="bi bi-x-circle"></i> Anuluj
                         </a>
                     </div>
@@ -74,12 +125,20 @@
 
 {% block extra_js %}
 <script>
+    // Pokazywanie pól konta
+    const createCheckbox = document.getElementById('create_account');
+    const accountFields = document.getElementById('account_fields');
+    if (createCheckbox) {
+        createCheckbox.addEventListener('change', function() {
+            accountFields.style.display = this.checked ? 'block' : 'none';
+        });
+    }
+
     // Ustawienie minimalnej daty na dzisiaj
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('check_in_date').setAttribute('min', today);
     document.getElementById('check_out_date').setAttribute('min', today);
-    
-    // Walidacja dat
+
     document.getElementById('check_in_date').addEventListener('change', function() {
         const checkIn = this.value;
         const checkOut = document.getElementById('check_out_date');
@@ -88,7 +147,7 @@
         }
     });
 
-    // Filtruj dostępne pokoje wg pojemności i dat (poprzez API kiedy są wybrane daty)
+    // Filtruj pokoje według pojemności
     const numberInput = document.getElementById('number_of_guests');
     const roomSelect = document.getElementById('room_id');
     const noRoomsAlert = document.getElementById('no_rooms_alert');
@@ -215,4 +274,3 @@
 </script>
 {% endblock %}
 {% endblock %}
-
