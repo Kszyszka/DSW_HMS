@@ -317,6 +317,27 @@ def employee_reservation_detail(request, pk):
             except Exception as e:
                 messages.error(request, f"Błąd kwoty: {e}")
 
+        elif action == 'delete_payment':
+            payment_id = request.POST.get('payment_id')
+            payment = get_object_or_404(Payment, pk=payment_id, reservation=reservation)
+            payment.delete()
+            messages.success(request, "Płatność została usunięta.")
+
+        elif action == 'edit_payment':
+            payment_id = request.POST.get('payment_id')
+            payment = get_object_or_404(Payment, pk=payment_id, reservation=reservation)
+            try:
+                amount_str = request.POST.get('amount', '').strip().replace(' ', '').replace('\xa0', '').replace(',', '.')
+                payment.amount = Decimal(amount_str)
+                payment.payment_date = request.POST.get('payment_date')
+                payment.payment_method = request.POST.get('payment_method')
+                payment.payment_status = request.POST.get('payment_status')
+                payment.transaction_id = request.POST.get('transaction_id')
+                payment.save()
+                messages.success(request, "Płatność zaktualizowana.")
+            except Exception as e:
+                messages.error(request, f"Błąd edycji płatności: {e}")
+
         elif action == 'add_charge':
             try:
                 # Pobierz wartość, usuń białe znaki (spacje i twarde spacje \xa0) i zamień przecinek na kropkę
