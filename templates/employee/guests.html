@@ -48,9 +48,9 @@
                             <tbody>
                                 {% for guest in guests %}
                                 <tr>
-                                    <td>{{ guest.name }} {{ guest.surname }}</td>
-                                    <td>{{ guest.email }}</td>
-                                    <td>{{ guest.phone }}</td>
+                                    <td>{{ guest.user.first_name }} {{ guest.user.last_name }}</td>
+                                    <td>{{ guest.user.email }}</td>
+                                    <td>{{ guest.phone_number }}</td>
                                     <td>{{ guest.created_at|date:"Y-m-d" }}</td>
                                     <td>
                                         <a href="{% url 'employee:guest_detail' guest.id %}" class="btn btn-sm btn-outline-primary">
@@ -72,4 +72,3 @@
     </div>
 </div>
 {% endblock %}
-

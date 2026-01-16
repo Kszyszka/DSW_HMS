@@ -1,14 +1,21 @@
-from django.urls import path
+from django.urls import path, include
 from . import views
 
-# Brak app_name - główne URL-e nie są w namespace
 urlpatterns = [
-    path('', views.home, name='home'),
+    # Widoki ogólne (Publiczne)
+    path('', views.home_view, name='home'),  # Zmieniono views.home na views.home_view
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
-    path('reservations/<int:reservation_id>/', views.public_reservation_detail, name='public_reservation_detail'),
-    path('reservations/<int:reservation_id>/precheckin/', views.pre_checkin, name='pre_checkin'),
-    path('reservations/<int:reservation_id>/pay/', views.online_payment_test, name='online_payment_test'),
-    path('api/rooms-availability/', views.rooms_availability_api, name='rooms_availability_api'),
+    path('register/', views.register_view, name='register'),
+    path('reservation/start/', views.public_create_reservation, name='public_create_reservation'),
+    
+    # API
+    path('api/rooms-availability/', views.room_availability_api, name='room_availability_api'),
+    
+    # PDF
+    path('invoice/<int:pk>/pdf/', views.reservation_invoice_pdf, name='reservation_invoice_pdf'),
+    
+    # Import ścieżek dla pod-modułów
+    path('guest/', include('core.guest_urls')),
+    path('employee/', include('core.employee_urls')),
 ]
-

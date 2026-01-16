@@ -1,50 +1,82 @@
-{% extends 'base.html' %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mój Profil - Hotel XYZ</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body { display: flex; flex-direction: column; min-height: 100vh; background-color: #f8f9fa; margin: 0; }
+        .hero-bg {
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            flex: 1;
+            width: 100%;
+            padding-top: 100px;
+            padding-bottom: 80px;
+            display: flex;
+            flex-direction: column;
+        }
+        .navbar { background-color: rgba(0, 0, 0, 0.8) !important; }
+        .card-glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+        footer { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 1000; }
+    </style>
+</head>
+<body>
 
-{% block title %}Profil - HMS{% endblock %}
+<nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="{% url 'home' %}">HOTEL XYZ</a>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto align-items-center">
+                <li class="nav-item"><a class="nav-link" href="{% url 'guest:dashboard' %}">Panel Gościa</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'logout' %}">Wyloguj</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
 
-{% block content %}
-<div class="row mt-4">
-    <div class="col-md-8 offset-md-2">
-        <h2><i class="bi bi-person"></i> Mój Profil</h2>
-        <hr>
-        
-        <div class="card">
-            <div class="card-body">
-                <form method="post">
-                    {% csrf_token %}
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="name" class="form-label">Imię</label>
-                            <input type="text" class="form-control" id="name" name="name" value="{{ guest.name }}" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="surname" class="form-label">Nazwisko</label>
-                            <input type="text" class="form-control" id="surname" name="surname" value="{{ guest.surname }}" required>
-                        </div>
+<div class="hero-bg">
+    <div class="container w-100 my-auto">
+        <div class="row justify-content-center">
+            <div class="col-lg-6">
+                <div class="card card-glass shadow-lg rounded-4">
+                    <div class="card-header p-4 border-0 bg-transparent text-center">
+                        <h3 class="mb-0 fw-bold text-dark"><i class="bi bi-person-circle me-2"></i>Edycja Profilu</h3>
                     </div>
-                    
-                    <div class="mb-3">
-                        <label for="email" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required>
+                    <div class="card-body p-4 pt-0">
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                            {% endfor %}
+                        {% endif %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <div class="mb-3"><label class="form-label">Imię</label><input type="text" name="first_name" class="form-control" value="{{ user.first_name }}"></div>
+                            <div class="mb-3"><label class="form-label">Nazwisko</label><input type="text" name="last_name" class="form-control" value="{{ user.last_name }}"></div>
+                            <div class="mb-3"><label class="form-label">Telefon</label><input type="text" name="phone_number" class="form-control" value="{{ guest.phone_number }}"></div>
+                            <div class="d-grid mt-4">
+                                <button type="submit" class="btn btn-dark rounded-pill">Zapisz zmiany</button>
+                            </div>
+                        </form>
                     </div>
-                    
-                    <div class="mb-3">
-                        <label for="phone" class="form-label">Telefon</label>
-                        <input type="text" class="form-control" id="phone" name="phone" value="{{ guest.phone }}">
-                    </div>
-                    
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-circle"></i> Zapisz Zmiany
-                        </button>
-                        <a href="{% url 'guest:dashboard' %}" class="btn btn-outline-secondary">
-                            <i class="bi bi-arrow-left"></i> Powrót
-                        </a>
-                    </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
+<footer class="bg-dark text-white-50 py-3 text-center mt-auto"><div class="container"><small>&copy; 2026 Hotel XYZ.</small></div></footer>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

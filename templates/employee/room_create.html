@@ -4,61 +4,37 @@
 
 {% block content %}
 <div class="row mt-4">
-    <div class="col-md-8 offset-md-2">
-        <h2><i class="bi bi-plus-circle"></i> Dodaj Nowy Pokój</h2>
+    <div class="col-md-6 offset-md-3">
+        <h2><i class="bi bi-plus-square"></i> Dodaj Nowy Pokój</h2>
         <hr>
-        
-        <div class="card">
+        <div class="card shadow-sm">
             <div class="card-body">
                 <form method="post">
                     {% csrf_token %}
                     <div class="mb-3">
-                        <label for="number" class="form-label">Numer pokoju</label>
-                        <input type="number" class="form-control" id="number" name="number" required>
+                        <label class="form-label">Numer pokoju</label>
+                        <input type="text" name="number" class="form-control" required>
                     </div>
-                    
                     <div class="mb-3">
-                        <label for="room_type" class="form-label">Typ pokoju</label>
-                        <select class="form-select" id="room_type" name="room_type" required>
-                            <option value="single">Pojedynczy</option>
-                            <option value="double">Podwójny</option>
+                        <label class="form-label">Typ pokoju</label>
+                        <select name="room_type" class="form-select" required>
+                            <option value="single">Jednoosobowy</option>
+                            <option value="double">Dwuosobowy</option>
                             <option value="suite">Apartament</option>
-                            <option value="family">Rodzinny</option>
                         </select>
                     </div>
-                    
                     <div class="mb-3">
-                        <label for="capacity" class="form-label">Pojemność</label>
-                        <input type="number" class="form-control" id="capacity" name="capacity" min="1" value="1" required>
+                        <label class="form-label">Pojemność (osoby)</label>
+                        <input type="number" name="capacity" class="form-control" min="1" required>
                     </div>
-                    
                     <div class="mb-3">
-                        <label for="price" class="form-label">Cena za noc (PLN)</label>
-                        <input type="number" step="0.01" class="form-control" id="price" name="price" min="0" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="status" class="form-label">Status</label>
-                        <select class="form-select" id="status" name="status" required>
-                            <option value="available" selected>Dostępny</option>
-                            <option value="occupied">Zajęty</option>
-                            <option value="maintenance">W konserwacji</option>
-                            <option value="reserved">Zarezerwowany</option>
-                        </select>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="notes" class="form-label">Uwagi (opcjonalnie)</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                        <label class="form-label">Cena za noc (PLN)</label>
+                        <input type="number" name="price" class="form-control" step="0.01" min="0" required>
                     </div>
                     
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-circle"></i> Utwórz Pokój
-                        </button>
-                        <a href="{% url 'employee:rooms' %}" class="btn btn-outline-secondary">
-                            <i class="bi bi-x-circle"></i> Anuluj
-                        </a>
+                        <button type="submit" class="btn btn-primary">Zapisz</button>
+                        <a href="{% url 'employee:rooms' %}" class="btn btn-outline-secondary">Anuluj</a>
                     </div>
                 </form>
             </div>
@@ -66,4 +42,3 @@
     </div>
 </div>
 {% endblock %}
-

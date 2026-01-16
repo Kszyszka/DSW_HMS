@@ -30,16 +30,20 @@
                         <th>Gość:</th>
                         <td>
                             <a href="{% url 'employee:guest_detail' reservation.guest.id %}">
-                                {{ reservation.guest.name }} {{ reservation.guest.surname }}
+                                {{ reservation.guest.user.first_name }} {{ reservation.guest.user.last_name }}
                             </a>
                             <br>
-                            <small class="text-muted">{{ reservation.guest.email }}</small>
+                            <small class="text-muted">{{ reservation.guest.user.email }}</small>
+                            <br>
+                            <small class="text-muted">Tel: {{ reservation.guest.phone_number }}</small>
                         </td>
                     </tr>
                     <tr>
                         <th>Pokój:</th>
                         <td>
-                            <form method="post" class="d-flex align-items-center">
+                            <div class="mb-2"><strong>Nr {{ reservation.room.number }}</strong> <span class="text-muted">({{ reservation.room.get_room_type_display }})</span></div>
+                            
+                            <form method="post" class="d-flex align-items-center bg-light p-2 rounded">
                                 {% csrf_token %}
                                 <input type="hidden" name="action" value="change_room">
                                 <select name="new_room_id" class="form-select form-select-sm me-2" style="width:auto;">
@@ -106,7 +110,7 @@
                     </tr>
                     <tr>
                         <th>Cena całkowita:</th>
-                        <td><strong>{{ reservation.price_total }} PLN</strong></td>
+                        <td><strong>{{ reservation.total_price }} PLN</strong></td>
                     </tr>
                     <tr>
                         <th>Zapłacono:</th>
@@ -132,29 +136,25 @@
                     </tr>
                     {% endif %}
                 </table>
-                {% if show_access_pin %}
-                    <div class="alert alert-success mt-3">
-                        <strong>Kod PIN do pokoju:</strong>
-                        <div class="fs-4 mt-2">{{ access_pin }}</div>
-                        <small class="text-muted">Widoczny dla personelu — PIN aktywny dla pobytu.</small>
-                    </div>
-                {% elif precheckin_allowed and paid_online %}
-                    {# allow manual generation by staff via pre_checkin endpoint #}
-                    <a href="{% url 'pre_checkin' reservation.id %}" class="btn btn-sm btn-primary mt-3">Wykonaj pre-checkin (wygeneruj PIN)</a>
-                {% endif %}
-                {% if has_online_pending %}
-                    <a href="{% url 'online_payment_test' reservation.id %}" class="btn btn-sm btn-warning mt-3">Spróbuj ponownie płatność online</a>
-                {% endif %}
-
-                {% if not show_access_pin and not precheckin_allowed %}
-                    {% if paid_online %}
-                        <div class="alert alert-info mt-3">Rezerwacja opłacona online. Kod PIN pojawi się 24 godziny przed zameldowaniem.</div>
-                    {% elif has_online_pending %}
-                        <div class="alert alert-info mt-3">Płatność online oczekuje — po opłaceniu kod PIN zostanie wygenerowany 24 godziny przed zameldowaniem.</div>
+                {% if reservation.reservation_pin %}
+                    {% if reservation.status == 'checked_in' %}
+                        <div class="alert alert-success mt-3">
+                            <strong>Kod PIN do pokoju:</strong>
+                            <div class="fs-4 mt-2">{{ reservation.reservation_pin }}</div>
+                            <small class="text-muted">Widoczny dla personelu i gościa.</small>
+                        </div>
                     {% else %}
-                        <div class="alert alert-info mt-3">Kod PIN pojawi się 24 godziny przed zameldowaniem, jeżeli rezerwacja zostanie opłacona online.</div>
+                        <div class="alert alert-secondary mt-3">
+                            <strong>Kod PIN do pokoju:</strong>
+                            <div class="mt-2"><i>Zostanie wyświetlony po zameldowaniu</i></div>
+                        </div>
                     {% endif %}
-                {% endif %}            </div>
+                {% else %}
+                    <div class="alert alert-warning mt-3">
+                        <strong>Kod PIN:</strong> Brak wygenerowanego kodu PIN.
+                    </div>
+                {% endif %}
+            </div>
         </div>
         
         <div class="card">
@@ -310,6 +310,9 @@
                             <i class="bi bi-x-circle"></i> Anuluj
                         </button>
                     </form>
+                    <button type="button" class="btn btn-warning w-100 mb-2" data-bs-toggle="modal" data-bs-target="#addChargeModal">
+                        <i class="bi bi-cash-coin"></i> Dolicz opłatę / karę
+                    </button>
                 {% elif reservation.status == 'checked_in' %}
                     <form method="post" class="mb-2">
                         {% csrf_token %}
@@ -318,6 +321,16 @@
                             <i class="bi bi-box-arrow-right"></i> Wymelduj
                         </button>
                     </form>
+                    <button type="button" class="btn btn-warning w-100 mb-2" data-bs-toggle="modal" data-bs-target="#addChargeModal">
+                        <i class="bi bi-cash-coin"></i> Dolicz opłatę / karę
+                    </button>
+                    <a href="{% url 'reservation_invoice_pdf' reservation.id %}" class="btn btn-outline-dark w-100 mb-2">
+                        <i class="bi bi-file-earmark-pdf"></i> Faktura PDF
+                    </a>
+                {% elif reservation.status == 'completed' %}
+                    <a href="{% url 'reservation_invoice_pdf' reservation.id %}" class="btn btn-outline-dark w-100 mb-2">
+                        <i class="bi bi-file-earmark-pdf"></i> Faktura PDF
+                    </a>
                 {% endif %}
                 <a href="{% url 'employee:reservations' %}" class="btn btn-outline-secondary w-100">
                     <i class="bi bi-arrow-left"></i> Powrót do listy
@@ -377,5 +390,34 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
+<!-- Modal doliczania opłat -->
+<div class="modal fade" id="addChargeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dolicz opłatę lub karę</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_charge">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Kwota (PLN)</label>
+                        <input type="number" step="0.01" class="form-control" name="charge_amount" min="0.01" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Opis (np. zniszczenia, barek)</label>
+                        <textarea class="form-control" name="charge_description" rows="2" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="submit" class="btn btn-warning">Dolicz do rachunku</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

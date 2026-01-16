@@ -11,42 +11,67 @@
     </div>
 </div>
 
+<!-- Panel Kierownika (Na samej górze) -->
+{% if user.is_superuser or employee.role == 'manager' %}
+<div class="row mb-4 manager-section">
+    <div class="col-md-12">
+        <div class="card border-primary shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-briefcase-fill"></i> Strefa Kierownika</h5>
+            </div>
+            <div class="card-body bg-light">
+                <a href="{% url 'employee:manager_reports' %}" class="btn btn-primary me-2 shadow-sm"><i class="bi bi-graph-up"></i> Raporty i Statystyki</a>
+                <a href="{% url 'employee:manager_employees' %}" class="btn btn-dark shadow-sm"><i class="bi bi-people-fill"></i> Zarządzanie Personelem</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row">
     <div class="col-md-3">
-        <div class="card text-white bg-primary mb-3">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-door-open"></i> Pokoje</h5>
-                <h2>{{ total_rooms }}</h2>
-                <p class="mb-0">Dostępne: {{ available_rooms }}</p>
+        <a href="{% url 'employee:rooms' %}" class="text-decoration-none">
+            <div class="card text-white bg-primary mb-3 h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-door-open"></i> Pokoje</h5>
+                    <h2>{{ total_rooms }}</h2>
+                    <p class="mb-0">Dostępne: {{ available_rooms }}</p>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-3">
-        <div class="card text-white bg-success mb-3">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-check-circle"></i> Zameldowania</h5>
-                <h2>{{ today_check_ins }}</h2>
-                <p class="mb-0">Dzisiaj</p>
+        <a href="{% url 'employee:reservations' %}?status=confirmed" class="text-decoration-none">
+            <div class="card text-white bg-success mb-3 h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-check-circle"></i> Zameldowania</h5>
+                    <h2>{{ today_check_ins }}</h2>
+                    <p class="mb-0">Dzisiaj (Potwierdzone)</p>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-3">
-        <div class="card text-white bg-info mb-3">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-box-arrow-right"></i> Wymeldowania</h5>
-                <h2>{{ today_check_outs }}</h2>
-                <p class="mb-0">Dzisiaj</p>
+        <a href="{% url 'employee:reservations' %}?status=checked_in" class="text-decoration-none">
+            <div class="card text-white bg-info mb-3 h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-box-arrow-right"></i> Wymeldowania</h5>
+                    <h2>{{ today_check_outs }}</h2>
+                    <p class="mb-0">Dzisiaj (W hotelu)</p>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-3">
-        <div class="card text-white bg-warning mb-3">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-clock-history"></i> Oczekujące</h5>
-                <h2>{{ pending_reservations }}</h2>
-                <p class="mb-0">Rezerwacje</p>
+        <a href="{% url 'employee:reservations' %}?status=pending" class="text-decoration-none">
+            <div class="card text-white bg-warning mb-3 h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-clock-history"></i> Oczekujące</h5>
+                    <h2>{{ pending_reservations }}</h2>
+                    <p class="mb-0">Do zatwierdzenia</p>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
 </div>
 
@@ -76,7 +101,7 @@
                                 {% for reservation in recent_reservations %}
                                 <tr>
                                     <td>#{{ reservation.id }}</td>
-                                    <td>{{ reservation.guest.name }} {{ reservation.guest.surname }}</td>
+                                    <td>{{ reservation.guest.user.first_name }} {{ reservation.guest.user.last_name }}</td>
                                     <td>Pokój {{ reservation.room.number }}</td>
                                     <td>{{ reservation.check_in_date }}</td>
                                     <td>{{ reservation.check_out_date }}</td>
@@ -103,6 +128,19 @@
     </div>
 </div>
 
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-calendar3"></i> Grafik Rezerwacji</h5>
+            </div>
+            <div class="card-body">
+                <div id='calendar'></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row mt-3">
     <div class="col-md-12">
         <div class="card">
@@ -123,5 +161,24 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
+<!-- FullCalendar CDN -->
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var calendarEl = document.getElementById('calendar');
+        var calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            locale: 'pl',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,listWeek'
+            },
+            events: {{ calendar_events_json|safe }},
+            height: 650
+        });
+        calendar.render();
+    });
+</script>
+{% endblock %}

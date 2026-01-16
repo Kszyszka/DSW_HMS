@@ -5,7 +5,7 @@
 {% block content %}
 <div class="row mt-4">
     <div class="col-md-12">
-        <h2><i class="bi bi-person"></i> Szczegóły Gościa</h2>
+        <h2><i class="bi bi-person"></i> Szczegóły Gościa: {{ guest.user.first_name }} {{ guest.user.last_name }}</h2>
         <hr>
     </div>
 </div>
@@ -20,19 +20,19 @@
                 <table class="table">
                     <tr>
                         <th>Imię:</th>
-                        <td>{{ guest.name }}</td>
+                        <td>{{ guest.user.first_name }}</td>
                     </tr>
                     <tr>
                         <th>Nazwisko:</th>
-                        <td>{{ guest.surname }}</td>
+                        <td>{{ guest.user.last_name }}</td>
                     </tr>
                     <tr>
                         <th>Email:</th>
-                        <td>{{ guest.email }}</td>
+                        <td>{{ guest.user.email }}</td>
                     </tr>
                     <tr>
                         <th>Telefon:</th>
-                        <td>{{ guest.phone }}</td>
+                        <td>{{ guest.phone_number }}</td>
                     </tr>
                     <tr>
                         <th>Data rejestracji:</th>
@@ -85,7 +85,7 @@
                                     <td>Pokój {{ reservation.room.number }}</td>
                                     <td>{{ reservation.check_in_date }}</td>
                                     <td>{{ reservation.check_out_date }}</td>
-                                    <td>{{ reservation.price_total }} PLN</td>
+                                    <td>{{ reservation.total_price }} PLN</td>
                                     <td>
                                         <span class="badge bg-{% if reservation.status == 'confirmed' %}success{% elif reservation.status == 'pending' %}warning{% else %}secondary{% endif %}">
                                             {{ reservation.get_status_display }}
@@ -109,4 +109,3 @@
     </div>
 </div>
 {% endblock %}
-

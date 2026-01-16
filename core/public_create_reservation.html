@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rezerwacja Pobytu - Hotel XYZ</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .btn { background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        .btn:hover { background-color: #218838; }
+        .alert { padding: 10px; background-color: #f8d7da; color: #721c24; border-radius: 4px; margin-bottom: 20px; }
+        .guest-details { background-color: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; margin-top: 20px; }
+        .room-option { padding: 10px; border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+    <h1>Zarezerwuj swój pobyt</h1>
+    <p><a href="{% url 'home' %}">&larr; Powrót do strony głównej</a></p>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="room_id">Wybierz pokój:</label>
+            <select name="room_id" id="room_id" required>
+                <option value="" disabled selected>-- Dostępne pokoje --</option>
+                {% for room in rooms %}
+                    <option value="{{ room.id }}">
+                        Pokój {{ room.number }} ({{ room.get_room_type_display }}) - {{ room.price }} PLN / noc
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="check_in">Data zameldowania:</label>
+            <input type="date" name="check_in" id="check_in" required>
+        </div>
+
+        <div class="form-group">
+            <label for="check_out">Data wymeldowania:</label>
+            <input type="date" name="check_out" id="check_out" required>
+        </div>
+
+        {% if not user.is_authenticated %}
+            <div class="guest-details">
+                <h3>Twoje dane</h3>
+                <p><small>Nie masz konta? Uzupełnij poniższe dane, a założymy je automatycznie.</small></p>
+                
+                <div class="form-group">
+                    <label>Imię:</label>
+                    <input type="text" name="first_name" required placeholder="Jan">
+                </div>
+                <div class="form-group">
+                    <label>Nazwisko:</label>
+                    <input type="text" name="last_name" required placeholder="Kowalski">
+                </div>
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" name="email" required placeholder="jan@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Telefon (będzie Twoim hasłem do logowania):</label>
+                    <input type="text" name="phone" required placeholder="123456789">
+                </div>
+            </div>
+        {% else %}
+            <div class="guest-details" style="background-color: #d4edda; color: #155724;">
+                <p>Jesteś zalogowany jako: <strong>{{ user.first_name }} {{ user.last_name }}</strong> ({{ user.email }})</p>
+            </div>
+        {% endif %}
+
+        <br>
+        <button type="submit" class="btn">Zatwierdź rezerwację</button>
+    </form>
+
+</body>
+</html>

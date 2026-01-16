@@ -1,1400 +1,1090 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth import login, authenticate, logout
-from django.contrib import messages
-from django.db.models import Q, Sum
-from datetime import date
-from django.contrib.auth.models import User
 from django.http import JsonResponse
+from django.contrib.auth import login, authenticate, logout
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.contrib.auth.models import User
+from .models import Room, Reservation, GuestProfile, EmployeeProfile, Payment, compute_reservation_price
+from .decorators import employee_required, guest_required, manager_required
 from django.utils import timezone
-import datetime
-from .models import Guest, Room, Reservation, Payment, Employee, RoomIssue, Season, SeasonPrice
-from .decorators import employee_required, guest_required
+from django.db.models import Q, Sum
+from datetime import datetime
+from django.db import transaction # Import do obsługi transakcji bazodanowych
+import random
+import string
+import re
+import json
+from decimal import Decimal
+from django.http import FileResponse
+import io
+try:
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+except ImportError:
+    canvas = None
 
-
-def home(request):
-    """Strona główna systemu"""
-    if request.user.is_authenticated:
-        # Superuser nie jest automatycznie przekierowywany - ma dostęp do wszystkiego
-        if request.user.is_superuser:
-            return render(request, 'core/home.html')
-        elif hasattr(request.user, 'employee_profile'):
-            return redirect('employee:dashboard')
-        elif hasattr(request.user, 'guest_profile'):
-            return redirect('guest:dashboard')
-    return render(request, 'core/home.html')
-
+# --- Authentication Views ---
 
 def login_view(request):
-    """Widok logowania"""
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
-            if hasattr(user, 'employee_profile'):
+            messages.success(request, f"Witaj, {user.first_name or user.username}! Zalogowano pomyślnie.")
+            if user.is_superuser or hasattr(user, 'employee_profile'):
                 return redirect('employee:dashboard')
-            elif hasattr(user, 'guest_profile'):
+            else:
                 return redirect('guest:dashboard')
-            return redirect('home')
         else:
-            messages.error(request, 'Nieprawidłowa nazwa użytkownika lub hasło.')
+            messages.error(request, "Nieprawidłowy email lub hasło.")
     return render(request, 'core/login.html')
 
-
 def logout_view(request):
-    """Widok wylogowania"""
     logout(request)
-    messages.success(request, 'Zostałeś pomyślnie wylogowany.')
+    messages.info(request, "Zostałeś wylogowany.")
     return redirect('home')
 
+def home_view(request):
+    return render(request, 'core/home.html')
 
-# ============ WIDOKI DLA GOŚCI ============
+def generate_pin():
+    return ''.join(random.choices(string.digits, k=4))
 
-@login_required
-@guest_required
-def guest_dashboard(request):
-    """Panel główny gościa"""
-    # Dla superusera pokazujemy wszystkie rezerwacje
-    if request.user.is_superuser:
-        reservations = Reservation.objects.all().order_by('-created_at')[:5]
-        upcoming_reservations = Reservation.objects.filter(
-            check_in_date__gte=date.today(),
-            status__in=['pending', 'confirmed']
-        ).order_by('check_in_date')
-        guest = None
-    else:
-        guest = request.user.guest_profile
-        reservations = Reservation.objects.filter(guest=guest).order_by('-created_at')[:5]
-        upcoming_reservations = Reservation.objects.filter(
-            guest=guest,
-            check_in_date__gte=date.today(),
-            status__in=['pending', 'confirmed']
-        ).order_by('check_in_date')
-    
-    context = {
-        'guest': guest,
-        'recent_reservations': reservations,
-        'upcoming_reservations': upcoming_reservations,
-        'is_superuser': request.user.is_superuser,
+def clean_text(text):
+    """Usuwa polskie znaki dla prostego PDF (ReportLab domyślnie nie obsługuje UTF-8 bez dodatkowych fontów)"""
+    replacements = {
+        'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z',
+        'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z'
     }
-    return render(request, 'guest/dashboard.html', context)
-
-
-@login_required
-@guest_required
-def guest_reservations(request):
-    """Lista rezerwacji gościa"""
-    # Dla superusera pokazujemy wszystkie rezerwacje
-    if request.user.is_superuser:
-        reservations = Reservation.objects.all().order_by('-created_at')
-        guest = None
-    else:
-        guest = request.user.guest_profile
-        reservations = Reservation.objects.filter(guest=guest).order_by('-created_at')
-    
-    context = {
-        'reservations': reservations,
-        'is_superuser': request.user.is_superuser,
-    }
-    return render(request, 'guest/reservations.html', context)
-
-
-@login_required
-@guest_required
-def guest_reservation_detail(request, reservation_id):
-    """Szczegóły rezerwacji"""
-    # Dla superusera nie sprawdzamy czy rezerwacja należy do gościa
-    if request.user.is_superuser:
-        reservation = get_object_or_404(Reservation, id=reservation_id)
-    else:
-        guest = request.user.guest_profile
-        reservation = get_object_or_404(Reservation, id=reservation_id, guest=guest)
-    payments = Payment.objects.filter(reservation=reservation)
-    
-    # Determine whether to show access PIN
-    paid_online = payments.filter(payment_method='online', payment_status='completed').exists()
-    show_access_pin = False
-    access_pin = None
-    precheckin_allowed = False
-    try:
-        today = timezone.localdate()
-        delta = (reservation.check_in_date - today).days
-        precheckin_allowed = delta <= 1
-        if paid_online and reservation.room.pin and precheckin_allowed:
-            show_access_pin = True
-            access_pin = reservation.room.pin
-    except Exception:
-        pass
-
-    has_online_pending = payments.filter(payment_method='online', payment_status='pending').exists()
-
-    context = {
-        'reservation': reservation,
-        'payments': payments,
-        'is_superuser': request.user.is_superuser,
-        'show_access_pin': show_access_pin,
-        'access_pin': access_pin,
-        'precheckin_allowed': precheckin_allowed,
-        'paid_online': paid_online,
-        'has_online_pending': has_online_pending,
-    }
-    return render(request, 'guest/reservation_detail.html', context)
-
-
-@login_required
-@guest_required
-def guest_create_reservation(request):
-    """Tworzenie nowej rezerwacji"""
-    # Dla superusera nie pozwalamy tworzyć rezerwacji bez wyboru gościa
-    if request.user.is_superuser:
-        messages.info(request, 'Jako administrator użyj panelu pracownika do zarządzania rezerwacjami.')
-        return redirect('employee:reservations')
-    
-    guest = request.user.guest_profile
-    
-    if request.method == 'POST':
-        room_id = request.POST.get('room_id')
-        check_in = request.POST.get('check_in_date')
-        check_out = request.POST.get('check_out_date')
-        notes = request.POST.get('notes', '')
-        number_of_guests = int(request.POST.get('number_of_guests') or 1)
-        payment_method = request.POST.get('payment_method', 'cash')
-        
-        try:
-            room = Room.objects.get(id=room_id)
-            check_in_date = date.fromisoformat(check_in)
-            check_out_date = date.fromisoformat(check_out)
-            
-            # Sprawdzenie dostępności pokoju
-            conflicting_reservations = Reservation.objects.filter(
-                room=room,
-                status__in=['pending', 'confirmed', 'checked_in'],
-                check_in_date__lt=check_out_date,
-                check_out_date__gt=check_in_date
-            )
-            
-            if conflicting_reservations.exists():
-                messages.error(request, 'Pokój jest już zarezerwowany w wybranym terminie.')
-                return redirect('guest:create_reservation')
-            
-            # Sprawdź pojemność
-            if number_of_guests > room.capacity:
-                messages.error(request, 'Wybrany pokój nie mieści tylu gości.')
-                return redirect('guest:create_reservation')
-
-            # Obliczenie ceny
-            nights = (check_out_date - check_in_date).days
-            price_total = room.price * nights
-            
-            reservation = Reservation.objects.create(
-                guest=guest,
-                room=room,
-                number_of_guests=number_of_guests,
-                check_in_date=check_in_date,
-                check_out_date=check_out_date,
-                price_total=price_total,
-                notes=notes,
-                status='pending'
-            )
-
-            if payment_method == 'cash':
-                Payment.objects.create(
-                    reservation=reservation,
-                    amount=price_total,
-                    payment_date=date.today(),
-                    payment_method='cash',
-                    payment_status='pending'
-                )
-                messages.success(request, 'Rezerwacja została utworzona. Oczekuje na potwierdzenie.')
-                return redirect('guest:reservation_detail', reservation_id=reservation.id)
-            else:
-                Payment.objects.create(
-                    reservation=reservation,
-                    amount=price_total,
-                    payment_date=date.today(),
-                    payment_method='online',
-                    payment_status='pending'
-                )
-                # Ustaw wstępny PIN dla pokoju przy rezerwacji online
-                try:
-                    room.set_new_pin()
-                    reservation.pin_assigned_at = timezone.now()
-                    reservation.save(update_fields=['pin_assigned_at'])
-                except Exception:
-                    pass
-        except Room.DoesNotExist:
-            messages.error(request, 'Wybrany pokój nie istnieje.')
-        except Exception as e:
-            messages.error(request, f'Błąd podczas tworzenia rezerwacji: {str(e)}')
-
-    # Pobranie dostępnych pokoi
-    available_rooms = Room.objects.filter(status='available')
-
-    context = {
-        'available_rooms': available_rooms,
-    }
-    return render(request, 'guest/create_reservation.html', context)
-
-
-def rooms_availability_api(request):
-    """API zwraca pokoje dostępne dla zadanego zakresu dat i liczby gości.
-    Zwraca dwa zbiory: available_now (pokój wolny teraz) oraz available_later (pokój proponowany - obecnie zajęty ale wolny na żądany termin z dopiskiem do kiedy jest zajęty).
-    """
-    check_in = request.GET.get('check_in_date')
-    check_out = request.GET.get('check_out_date')
-    number_of_guests = int(request.GET.get('number_of_guests') or 1)
-
-    if not check_in or not check_out:
-        return JsonResponse({'error': 'Brakuje dat'}, status=400)
-
-    try:
-        check_in_date = date.fromisoformat(check_in)
-        check_out_date = date.fromisoformat(check_out)
-    except Exception:
-        return JsonResponse({'error': 'Nieprawidłowy format dat'}, status=400)
-
-    # Pobierz wszystkie pokoje (najpierw sprawdzenie dostępności wg dat niezależnie od pojemności)
-    rooms_all = Room.objects.all().order_by('number')
-
-    available_by_date = []
-    today = timezone.localdate()
-
-    blocked_statuses = ['to_clean', 'maintenance']
-    for room in rooms_all:
-        # Jeżeli pokój jest oznaczony jako wymagający sprzątania lub w konserwacji - nie oferujemy go w żadnym wariancie
-        if room.status in blocked_statuses:
-            continue
-        conflicts = Reservation.objects.filter(
-            room=room,
-            status__in=['pending', 'confirmed', 'checked_in'],
-            check_in_date__lt=check_out_date,
-            check_out_date__gt=check_in_date
-        )
-        if conflicts.exists():
-            continue
-
-        room_data = {
-            'id': room.id,
-            'number': room.number,
-            'room_type': room.get_room_type_display(),
-            'price': str(room.price),
-            'capacity': room.capacity,
-            'status': room.status,
-        }
-
-        if room.status == 'available':
-            room_data['occupied_until'] = None
-        else:
-            latest_res = Reservation.objects.filter(
-                room=room,
-                status__in=['pending', 'confirmed', 'checked_in']
-            ).order_by('-check_out_date').first()
-            room_data['occupied_until'] = latest_res.check_out_date.isoformat() if latest_res and latest_res.check_out_date >= today else None
-
-        available_by_date.append(room_data)
-
-    # Jeśli brak dostępnych pokoi w żądanym terminie -> znajdź najbliższy dostępny start (do 365 dni)
-    nearest_available_start = None
-    if not available_by_date:
-        duration_days = (check_out_date - check_in_date).days
-        for delta in range(1, 366):
-            candidate_start = check_in_date + datetime.timedelta(days=delta)
-            candidate_end = candidate_start + datetime.timedelta(days=duration_days)
-            for room in rooms_all:
-                conflicts = Reservation.objects.filter(
-                    room=room,
-                    status__in=['pending', 'confirmed', 'checked_in'],
-                    check_in_date__lt=candidate_end,
-                    check_out_date__gt=candidate_start
-                )
-                if not conflicts.exists():
-                    nearest_available_start = candidate_start.isoformat()
-                    break
-            if nearest_available_start:
-                break
-
-    # Teraz filtry pojemności dla pokazania konkretnych pokoi spełniających ilość gości
-    rooms_cap = [r for r in available_by_date if r['capacity'] >= number_of_guests]
-    available_now = [r for r in rooms_cap if r['status'] == 'available']
-    available_later = [r for r in rooms_cap if r['status'] != 'available']
-
-    capacity_issue = bool(available_by_date) and not rooms_cap
-
-    return JsonResponse({
-        'available_by_date': available_by_date,
-        'available_now': available_now,
-        'available_later': available_later,
-        'nearest_available_start': nearest_available_start,
-        'capacity_issue': capacity_issue,
-    })
-
-
-def public_create_reservation(request):
-    """Tworzenie rezerwacji bez logowania - tworzy obiekt Guest (opcjonalnie User)"""
-    if request.user.is_authenticated:
-        return redirect('guest:create_reservation')
-
-    if request.method == 'POST':
-        # Dane gościa
-        name = request.POST.get('name')
-        surname = request.POST.get('surname')
-        email = request.POST.get('email')
-        phone = request.POST.get('phone')
-
-        # Rezerwacja
-        room_id = request.POST.get('room_id')
-        check_in = request.POST.get('check_in_date')
-        check_out = request.POST.get('check_out_date')
-        number_of_guests = int(request.POST.get('number_of_guests') or 1)
-        notes = request.POST.get('notes', '')
-
-        payment_method = request.POST.get('payment_method', 'cash')
-
-        create_account = request.POST.get('create_account') == 'on'
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        password2 = request.POST.get('password2')
-
-        try:
-            # Utwórz lub pobierz Guest po emailu
-            guest, created = Guest.objects.get_or_create(
-                email=email,
-                defaults={'name': name or '', 'surname': surname or '', 'phone': phone or ''}
-            )
-
-            # Jeśli zaznaczono tworzenie konta i użytkownik nie istnieje
-            if create_account and not guest.user:
-                if password != password2:
-                    messages.error(request, 'Hasła nie są identyczne.')
-                    return redirect('guest:create_reservation_public')
-
-                # Przyjmij username = email jeśli nie podano
-                if not username:
-                    username = email
-
-                if User.objects.filter(username=username).exists():
-                    messages.error(request, 'Nazwa użytkownika jest już zajęta.')
-                    return redirect('guest:create_reservation_public')
-
-                user = User.objects.create_user(username=username, password=password)
-                user.first_name = name or ''
-                user.last_name = surname or ''
-                user.email = email or ''
-                user.save()
-                guest.user = user
-                guest.name = name or guest.name
-                guest.surname = surname or guest.surname
-                guest.phone = phone or guest.phone
-                guest.save()
-
-                # Zaloguj użytkownika automatycznie
-                login(request, user)
-
-            # Jeśli gość miał konto (user exists) i jest zalogowany, nic więcej
-
-            # Tworzenie rezerwacji
-            room = Room.objects.get(id=room_id)
-            # Sprawdź pojemność
-            if number_of_guests > room.capacity:
-                messages.error(request, 'Wybrany pokój nie mieści tylu gości.')
-                return redirect('guest:create_reservation_public')
-            check_in_date = date.fromisoformat(check_in)
-            check_out_date = date.fromisoformat(check_out)
-
-            conflicting_reservations = Reservation.objects.filter(
-                room=room,
-                status__in=['pending', 'confirmed', 'checked_in'],
-                check_in_date__lt=check_out_date,
-                check_out_date__gt=check_in_date
-            )
-
-            if conflicting_reservations.exists():
-                messages.error(request, 'Pokój jest już zarezerwowany w wybranym terminie.')
-                return redirect('guest:create_reservation_public')
-
-            nights = (check_out_date - check_in_date).days
-            price_total = room.price * nights
-            
-            reservation = Reservation.objects.create(
-                guest=guest,
-                room=room,
-                number_of_guests=number_of_guests,
-                check_in_date=check_in_date,
-                check_out_date=check_out_date,
-                price_total=price_total,
-                notes=notes,
-                status='pending'
-            )
-
-            # Jeśli wybrano formę płatności - utwórz wpis płatności (dla online -> redirect do bramki testowej)
-            if payment_method == 'cash':
-                Payment.objects.create(
-                    reservation=reservation,
-                    amount=price_total,
-                    payment_date=date.today(),
-                    payment_method='cash',
-                    payment_status='pending'
-                )
-                # Zakończ proces rezerwacji i pokaż stronę z instrukcją
-                messages.success(request, 'Rezerwacja została utworzona. Instrukcje zostały wyświetlone poniżej.')
-                return redirect('public_reservation_detail', reservation_id=reservation.id)
-            else:
-                # online
-                try:
-                    Payment.objects.create(
-                        reservation=reservation,
-                        amount=price_total,
-                        payment_date=date.today(),
-                        payment_method='online',
-                        payment_status='pending'
-                    )
-                except Exception as e:
-                    messages.error(request, f'Błąd podczas inicjowania płatności: {str(e)}. Możesz spróbować ponownie na stronie rezerwacji.')
-                    return redirect('public_reservation_detail', reservation_id=reservation.id)
-
-                # Przy rezerwacji z płatnością online ustaw wstępny PIN dla pokoju
-                try:
-                    room.set_new_pin()
-                    reservation.pin_assigned_at = timezone.now()
-                    reservation.save(update_fields=['pin_assigned_at'])
-                except Exception:
-                    pass
-                return redirect('online_payment_test', reservation_id=reservation.id)
-
-            messages.success(request, 'Rezerwacja została utworzona. Oczekuje na potwierdzenie.')
-            return redirect('guest:reservation_detail', reservation_id=reservation.id)
-
-        except Room.DoesNotExist:
-            messages.error(request, 'Wybrany pokój nie istnieje.')
-        except Exception as e:
-            messages.error(request, f'Błąd podczas tworzenia rezerwacji: {str(e)}')
-
-    # Pobranie dostępnych pokoi
-    available_rooms = Room.objects.filter(status='available')
-
-    context = {
-        'available_rooms': available_rooms,
-    }
-    return render(request, 'guest/create_reservation_public.html', context)
-
-
-def public_reservation_detail(request, reservation_id):
-    """Publiczny podgląd rezerwacji dostępny bez logowania"""
-    reservation = get_object_or_404(Reservation, id=reservation_id)
-    payments = Payment.objects.filter(reservation=reservation)
-
-    # Czy rezerwacja ma opłaconą płatność online?
-    paid_online = payments.filter(payment_method='online', payment_status='completed').exists()
-
-    show_access_pin = False
-    access_pin = None
-    precheckin_allowed = False
-    try:
-        today = timezone.localdate()
-        delta = (reservation.check_in_date - today).days
-        # pre-checkin możliwy <=1 dnia przed zameldowaniem
-        precheckin_allowed = delta <= 1
-        if paid_online and reservation.room.pin and precheckin_allowed:
-            show_access_pin = True
-            access_pin = reservation.room.pin
-    except Exception:
-        pass
-
-    has_online_pending = payments.filter(payment_method='online', payment_status='pending').exists()
-
-    context = {
-        'reservation': reservation,
-        'payments': payments,
-        'show_access_pin': show_access_pin,
-        'access_pin': access_pin,
-        'precheckin_allowed': precheckin_allowed,
-        'paid_online': paid_online,
-        'has_online_pending': has_online_pending,
-    }
-    return render(request, 'public_reservation_detail.html', context) 
-
-
-def pre_checkin(request, reservation_id):
-    """Endpoint inicjujący pre-checkin: regeneruje PIN pokoju jeśli warunki spełnione"""
-    reservation = get_object_or_404(Reservation, id=reservation_id)
-    payments = Payment.objects.filter(reservation=reservation)
-
-    paid_online = payments.filter(payment_method='online', payment_status='completed').exists()
-    if not paid_online:
-        messages.error(request, 'Pre-checkin dostępny tylko dla opłaconych rezerwacji online.')
-        return redirect('public_reservation_detail', reservation_id=reservation.id)
-
-    today = timezone.localdate()
-    delta = (reservation.check_in_date - today).days
-    if delta > 1:
-        messages.error(request, 'Pre-checkin można wykonać najwcześniej 1 dzień przed zameldowaniem.')
-        return redirect('public_reservation_detail', reservation_id=reservation.id)
-
-    # Generate new PIN and save
-    try:
-        new_pin = reservation.room.set_new_pin()
-        reservation.pin_assigned_at = timezone.now()
-        reservation.save(update_fields=['pin_assigned_at'])
-        messages.success(request, f'Pre-checkin wykonany. Kod PIN do pokoju: {new_pin}')
-    except Exception as e:
-        messages.error(request, f'Błąd podczas generowania PIN: {str(e)}')
-
-    return redirect('public_reservation_detail', reservation_id=reservation.id)
-
-
-def online_payment_test(request, reservation_id):
-    """Prosta bramka testowa: symulacja płatności online"""
-    reservation = get_object_or_404(Reservation, id=reservation_id)
-    payment = Payment.objects.filter(reservation=reservation, payment_method='online').first()
-
-    if request.method == 'POST':
-        # brak powiązanej płatności -> poinformuj i pozwól ponowić próbę
-        if not payment:
-            messages.error(request, 'Nie znaleziono płatności online powiązanej z tą rezerwacją. Spróbuj ponownie na stronie rezerwacji.')
-            return redirect('public_reservation_detail', reservation_id=reservation.id)
-
-        try:
-            # Oznacz płatność jako zrealizowaną
-            payment.payment_status = 'completed'
-            payment.transaction_id = 'TEST_TXN_%s' % reservation.id
-            payment.save()
-
-            # Ustaw status rezerwacji i pokoju
-            reservation.status = 'confirmed'
-            reservation.room.status = 'reserved'
-
-            # Jeśli do zameldowania pozostało mniej lub równo 1 dzień -> wygeneruj nowy PIN (pre-checkin)
-            today = timezone.localdate()
-            delta = (reservation.check_in_date - today).days
-            if delta <= 1:
-                reservation.room.set_new_pin()
-                reservation.pin_assigned_at = timezone.now()
-                reservation.save(update_fields=['pin_assigned_at'])
-
-            reservation.room.save()
-            reservation.save()
-            messages.success(request, 'Płatność została zakończona (symulacja).')
-            return redirect('public_reservation_detail', reservation_id=reservation.id)
-        except Exception as e:
-            messages.error(request, f'Błąd podczas przetwarzania płatności: {str(e)}. Możesz spróbować ponownie na stronie rezerwacji.')
-            return redirect('public_reservation_detail', reservation_id=reservation.id)
-
-    context = {
-        'reservation': reservation,
-        'payment': payment,
-    }
-    return render(request, 'online_payment_test.html', context)
-
-
-def guest_register(request):
-    """Rejestracja gościa (tworzy User + Guest)"""
-    if request.user.is_authenticated:
-        return redirect('home')
-
-    if request.method == 'POST':
-        name = request.POST.get('name')
-        surname = request.POST.get('surname')
-        email = request.POST.get('email')
-        phone = request.POST.get('phone')
-        username = request.POST.get('username') or email
-        password = request.POST.get('password')
-        password2 = request.POST.get('password2')
-
-        if password != password2:
-            messages.error(request, 'Hasła nie są identyczne.')
-            return redirect('guest:register')
-
-        if User.objects.filter(username=username).exists():
-            messages.error(request, 'Nazwa użytkownika jest już zajęta.')
-            return redirect('guest:register')
-
-        if Guest.objects.filter(email=email).exists():
-            messages.error(request, 'Gość z podanym adresem e-mail już istnieje. Zaloguj się lub użyj innego adresu.')
-            return redirect('guest:register')
-
-        try:
-            user = User.objects.create_user(username=username, password=password)
-            user.first_name = name or ''
-            user.last_name = surname or ''
-            user.email = email or ''
-            user.save()
-
-            guest = Guest.objects.create(
-                user=user,
-                name=name or '',
-                surname=surname or '',
-                email=email or '',
-                phone=phone or ''
-            )
-
-            login(request, user)
-            messages.success(request, 'Konto zostało utworzone i połączone z profilem gościa.')
-            return redirect('guest:dashboard')
-        except Exception as e:
-            messages.error(request, f'Błąd podczas rejestracji: {str(e)}')
-
-    return render(request, 'guest/register.html')
-
-
-@login_required
-@guest_required
-def guest_profile(request):
-    """Profil gościa"""
-    # Dla superusera przekierowujemy do panelu admin
-    if request.user.is_superuser:
-        return redirect('/admin/')
-    
-    guest = request.user.guest_profile
-    
-    if request.method == 'POST':
-        guest.name = request.POST.get('name', guest.name)
-        guest.surname = request.POST.get('surname', guest.surname)
-        guest.phone = request.POST.get('phone', guest.phone)
-        guest.save()
-        
-        # Aktualizacja danych użytkownika
-        request.user.first_name = guest.name
-        request.user.last_name = guest.surname
-        request.user.email = request.POST.get('email', request.user.email)
-        request.user.save()
-        
-        messages.success(request, 'Profil został zaktualizowany.')
-        return redirect('guest:profile')
-    
-    context = {
-        'guest': guest,
-    }
-    return render(request, 'guest/profile.html', context)
-
-
-# ============ WIDOKI DLA PRACOWNIKÓW ============
+    if not text: return ""
+    text = str(text)
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text
+
+# --- Employee Views ---
 
 @login_required
 @employee_required
 def employee_dashboard(request):
-    """Panel główny pracownika"""
-    # Dla superusera tworzymy pseudo-profil pracownika
-    if request.user.is_superuser:
-        employee = type('Employee', (), {
-            'user': request.user,
-            'role': 'admin',
-            'get_role_display': lambda: 'Administrator'
-        })()
-    else:
-        employee = request.user.employee_profile
-
-    # Jeśli pracownik ma rolę pokojówki — przekieruj bezpośrednio do widoku sprzątania
-    try:
-        role = getattr(employee, 'role', None)
-    except Exception:
-        role = None
-    if role == 'housekeeping' and not request.user.is_superuser:
-        return redirect('employee:housekeeping')
-
-    # Statystyki
-    today = date.today()
+    # Proste statystyki na dashboard
+    today = timezone.now().date()
+    pending_reservations = Reservation.objects.filter(status='pending').count()
+    checkins_today = Reservation.objects.filter(check_in=today, status='confirmed').count()
+    checkouts_today = Reservation.objects.filter(check_out=today, status='checked_in').count()
+    
+    # Statystyki pokoi
     total_rooms = Room.objects.count()
     available_rooms = Room.objects.filter(status='available').count()
-    occupied_rooms = Room.objects.filter(status='occupied').count()
     
-    today_check_ins = Reservation.objects.filter(
-        check_in_date=today,
-        status__in=['confirmed', 'checked_in']
-    ).count()
-    
-    today_check_outs = Reservation.objects.filter(
-        check_out_date=today,
-        status='checked_in'
-    ).count()
-    
-    pending_reservations = Reservation.objects.filter(status='pending').count()
-    
-    recent_reservations = Reservation.objects.all().order_by('-created_at')[:10]
+    # Ostatnie rezerwacje
+    recent_reservations = Reservation.objects.all().order_by('-created_at')[:5]
+
+    # Pobieranie profilu pracownika
+    employee = None
+    if hasattr(request.user, 'employee_profile'):
+        employee = request.user.employee_profile
+        # --- PRZEKIEROWANIE RÓL ---
+        if employee.role == 'technician':
+            return redirect('employee:maintenance')
+        if employee.role == 'maid':
+            return redirect('employee:housekeeping')
+    elif request.user.is_superuser:
+        # Fallback dla administratora (jeśli nie ma profilu pracownika)
+        class AdminProxy:
+            user = request.user
+            role = 'manager'
+            def get_role_display(self):
+                return "Administrator"
+        employee = AdminProxy()
+
+    # Dane do kalendarza (FullCalendar)
+    calendar_events = []
+    # Używamy values(), aby pobrać tylko potrzebne pola i uniknąć błędu deserializacji uszkodzonych cen (Decimal)
+    active_reservations = Reservation.objects.filter(
+        status__in=['confirmed', 'checked_in', 'pending']
+    ).values('id', 'status', 'check_in', 'check_out', 'room__number', 'guest__user__last_name')
+
+    for res in active_reservations:
+        color = '#28a745' if res['status'] == 'checked_in' else ('#0d6efd' if res['status'] == 'confirmed' else '#ffc107')
+        calendar_events.append({
+            'title': f"{res['room__number']} - {res['guest__user__last_name']}",
+            'start': res['check_in'].isoformat(),
+            'end': res['check_out'].isoformat(),
+            'color': color,
+            'url': f"/employee/reservations/{res['id']}/"
+        })
     
     context = {
-        'employee': employee,
+        'pending_reservations': pending_reservations,
+        'checkins_today': checkins_today,
+        'checkouts_today': checkouts_today,
         'total_rooms': total_rooms,
         'available_rooms': available_rooms,
-        'occupied_rooms': occupied_rooms,
-        'today_check_ins': today_check_ins,
-        'today_check_outs': today_check_outs,
-        'pending_reservations': pending_reservations,
         'recent_reservations': recent_reservations,
+        'employee': employee,
+        'calendar_events_json': json.dumps(calendar_events),
     }
     return render(request, 'employee/dashboard.html', context)
-
 
 @login_required
 @employee_required
 def employee_rooms(request):
-    """Zarządzanie pokojami"""
-    rooms = Room.objects.all().order_by('number')
-    
+    if not request.user.is_superuser and request.user.employee_profile.role in ['technician', 'maid']:
+        messages.error(request, "Brak uprawnień do zarządzania pokojami.")
+        return redirect('employee:dashboard')
+
     if request.method == 'POST':
-        action = request.POST.get('action')
         room_id = request.POST.get('room_id')
+        new_status = request.POST.get('status')
         
-        try:
-            room = Room.objects.get(id=room_id)
-            
-            if action == 'update_status':
-                new_status = request.POST.get('status')
-                # Check for reservation conflicts when blocking room
-                if new_status in ['maintenance', 'to_clean']:
-                    from datetime import date as _date
-                    conflicts = Reservation.objects.filter(
-                        room=room,
-                        status__in=['pending', 'confirmed', 'checked_in'],
-                        check_out_date__gte=_date.today()
-                    ).order_by('check_in_date')
-                    # If conflicts exist and user didn't confirm force, show warning with list
-                    if conflicts.exists() and request.POST.get('confirm_force') != 'yes':
-                        # Re-render page with conflict info
-                        rooms = Room.objects.all().order_by('number')
-                        context = {
-                            'rooms': rooms,
-                            'conflict_room': room,
-                            'conflict_reservations': conflicts,
-                        }
-                        messages.warning(request, f'Konflikt rezerwacji: znaleziono {conflicts.count()} rezerwację(je) w blokowanym terminie. Zatwierdź, aby wymusić zmianę statusu i przenieść/anulować rezerwacje.')
-                        return render(request, 'employee/rooms.html', context)
-                # No conflicts or user confirmed force
-                room.status = new_status
-                room.save()
-                messages.success(request, f'Status pokoju {room.number} został zaktualizowany.')
-            elif action == 'update':
-                room.number = request.POST.get('number', room.number)
-                room.room_type = request.POST.get('room_type', room.room_type)
-                room.price = request.POST.get('price', room.price)
-                room.capacity = request.POST.get('capacity', room.capacity)
-                room.notes = request.POST.get('notes', room.notes)
-                room.save()
-                messages.success(request, f'Pokój {room.number} został zaktualizowany.')
-            
-        except Exception as e:
-            messages.error(request, f'Błąd: {str(e)}')
-        
-        return redirect('employee:rooms')
-    
-    context = {
-        'rooms': rooms,
-    }
-    return render(request, 'employee/rooms.html', context)
-
-
-@login_required
-@employee_required
-def employee_pricing(request):
-    """Zarządzanie sezonami i cennikami (interface for manager/admin)"""
-    # allow only manager or admin
-    if not request.user.is_superuser:
-        if not hasattr(request.user, 'employee_profile') or request.user.employee_profile.role not in ('manager', 'admin'):
-            messages.error(request, 'Brak dostępu do modułu Cenniki i Sezony.')
-            return redirect('employee:dashboard')
-
-    seasons = Season.objects.all().order_by('-priority', '-start_date')
-
-    context = {
-        'seasons': seasons,
-    }
-    return render(request, 'employee/pricing.html', context)
-
-
-@login_required
-@employee_required
-def employee_room_create(request):
-    """Tworzenie nowego pokoju (dla pracowników)"""
-    if request.method == 'POST':
-        try:
-            Room.objects.create(
-                number=request.POST.get('number'),
-                room_type=request.POST.get('room_type'),
-                price=request.POST.get('price'),
-                capacity=request.POST.get('capacity'),
-                status=request.POST.get('status', 'available'),
-                notes=request.POST.get('notes', ''),
-            )
-            messages.success(request, 'Pokój został utworzony.')
+        if room_id and new_status:
+            room = get_object_or_404(Room, pk=room_id)
+            room.status = new_status
+            room.save()
+            messages.success(request, f"Status pokoju {room.number} zmieniony na {room.get_status_display()}.")
             return redirect('employee:rooms')
-        except Exception as e:
-            messages.error(request, f'Błąd podczas tworzenia pokoju: {str(e)}')
 
-    return render(request, 'employee/room_create.html')
-
-
-@login_required
-@employee_required
-def employee_create_reservation(request):
-    """Tworzenie rezerwacji przez pracownika (możliwość wyboru istniejącego gościa lub utworzenia nowego)"""
-    if request.method == 'POST':
-        guest_id = request.POST.get('guest_id')
-        name = request.POST.get('name')
-        surname = request.POST.get('surname')
-        email = request.POST.get('email')
-        phone = request.POST.get('phone')
-
-        room_id = request.POST.get('room_id')
-        check_in = request.POST.get('check_in_date')
-        check_out = request.POST.get('check_out_date')
-        number_of_guests = int(request.POST.get('number_of_guests') or 1)
-        notes = request.POST.get('notes', '')
-        payment_method = request.POST.get('payment_method', 'cash')
-
-        try:
-            if guest_id:
-                guest = Guest.objects.get(id=guest_id)
-            else:
-                guest, created = Guest.objects.get_or_create(
-                    email=email,
-                    defaults={'name': name or '', 'surname': surname or '', 'phone': phone or ''}
-                )
-
-            room = Room.objects.get(id=room_id)
-
-            # Sprawdź pojemność
-            if number_of_guests > room.capacity:
-                messages.error(request, 'Wybrany pokój nie mieści tylu gości.')
-                return redirect('employee:reservation_create')
-
-            check_in_date = date.fromisoformat(check_in)
-            check_out_date = date.fromisoformat(check_out)
-
-            # Sprawdzenie konfliktów
-            conflicts = Reservation.objects.filter(
-                room=room,
-                status__in=['pending', 'confirmed', 'checked_in'],
-                check_in_date__lt=check_out_date,
-                check_out_date__gt=check_in_date
-            )
-
-            if conflicts.exists() and request.POST.get('confirm_force') != 'yes':
-                available_rooms = Room.objects.filter(status='available')
-                context = {
-                    'available_rooms': available_rooms,
-                    'conflict_room': room,
-                    'conflict_reservations': conflicts,
-                    'guests': Guest.objects.all().order_by('-created_at')[:50],
-                }
-                messages.warning(request, f'Konflikt rezerwacji: znaleziono {conflicts.count()} rezerwację(je) dla wybranego pokoju. Potwierdź wymuszenie, aby przypisać.')
-                return render(request, 'employee/create_reservation.html', context)
-
-            nights = (check_out_date - check_in_date).days
-            price_total = room.price * nights
-
-            reservation = Reservation.objects.create(
-                guest=guest,
-                room=room,
-                number_of_guests=number_of_guests,
-                check_in_date=check_in_date,
-                check_out_date=check_out_date,
-                price_total=price_total,
-                notes=notes,
-                status='pending'
-            )
-
-            if payment_method == 'cash':
-                Payment.objects.create(
-                    reservation=reservation,
-                    amount=price_total,
-                    payment_date=date.today(),
-                    payment_method='cash',
-                    payment_status='pending'
-                )
-                messages.success(request, 'Rezerwacja została utworzona.')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
-            else:
-                try:
-                    Payment.objects.create(
-                        reservation=reservation,
-                        amount=price_total,
-                        payment_date=date.today(),
-                        payment_method='online',
-                        payment_status='pending'
-                    )
-                except Exception as e:
-                    messages.error(request, f'Błąd podczas inicjowania płatności: {str(e)}. Możesz spróbować ponownie na stronie rezerwacji.')
-                    return redirect('employee:reservation_detail', reservation_id=reservation.id)
-
-                # Wstępny PIN dla rezerwacji online
-                try:
-                    room.set_new_pin()
-                    reservation.pin_assigned_at = timezone.now()
-                    reservation.save(update_fields=['pin_assigned_at'])
-                except Exception:
-                    pass
-                return redirect('online_payment_test', reservation_id=reservation.id)
-
-        except Room.DoesNotExist:
-            messages.error(request, 'Wybrany pokój nie istnieje.')
-        except Guest.DoesNotExist:
-            messages.error(request, 'Wybrany gość nie istnieje.')
-        except Exception as e:
-            messages.error(request, f'Błąd: {str(e)}')
-
-        return redirect('employee:reservation_create')
-
-    available_rooms = Room.objects.filter(status='available')
-    guests = Guest.objects.all().order_by('-created_at')[:50]
-    context = {
-        'available_rooms': available_rooms,
-        'guests': guests,
-    }
-    return render(request, 'employee/create_reservation.html', context)
-
-
-@login_required
-@employee_required
-def housekeeping_dashboard(request):
-    """Widok dla pokojówek: lista pokoi do posprzątania i zgłoszonych usterek"""
-    # tylko pracownicy o odpowiedniej roli
-    if not request.user.is_superuser:
-        if not hasattr(request.user, 'employee_profile') or request.user.employee_profile.role != 'housekeeping':
-            messages.error(request, 'Brak dostępu do tej sekcji.')
-            return redirect('employee:dashboard')
-
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        try:
-            if action == 'mark_clean':
-                room = Room.objects.get(id=request.POST.get('room_id'))
-                room.status = 'available'
-                room.save()
-                messages.success(request, f'Pokój {room.number} oznaczono jako posprzątany i dostępny.')
-            elif action == 'resolve_issue':
-                issue = RoomIssue.objects.get(id=request.POST.get('issue_id'))
-                issue.is_resolved = True
-                issue.save()
-                # Sprawdź, czy są jeszcze nie rozwiązane usterki dla tego pokoju
-                room = issue.room
-                has_unresolved = room.issues.filter(is_resolved=False).exists()
-                if not has_unresolved:
-                    room.status = 'to_clean'
-                    room.save()
-                    messages.success(request, 'Usterka została oznaczona jako rozwiązana. Pokój ustawiony jako "Do sprzątania".')
-                else:
-                    messages.success(request, 'Usterka została oznaczona jako rozwiązana. Pozostałe usterki nadal aktywne, pokój pozostaje w konserwacji.')
-            elif action == 'reopen_issue':
-                issue = RoomIssue.objects.get(id=request.POST.get('issue_id'))
-                issue.is_resolved = False
-                issue.save()
-                # Jeśli usterka ponownie otwarta ustaw pokój na konserwację
-                room = issue.room
-                room.status = 'maintenance'
-                room.save()
-                messages.success(request, 'Usterka została ponownie otwarta. Pokój ustawiony jako "W konserwacji".')
-            elif action == 'report_issue':
-                # Zgłoszenie nowej usterki (z formularza)
-                room = Room.objects.get(id=request.POST.get('room_id'))
-                title = request.POST.get('issue_title', 'Usterka zgłoszona')[:200]
-                description = request.POST.get('issue_description', '').strip()
-                # Spróbuj przypisać zgłaszającego jako Guest jeśli istnieje
-                reported_by = None
-                if hasattr(request.user, 'guest_profile'):
-                    reported_by = request.user.guest_profile
-                RoomIssue.objects.create(
-                    room=room,
-                    title=title,
-                    description=description,
-                    reported_by=reported_by,
-                )
-                # Ustaw pokój w tryb konserwacji
-                room.status = 'maintenance'
-                # Dodaj krótki wpis do notatek pokoju
-                note_entry = f"Usterka zgłoszona: {title}"
-                if description:
-                    note_entry += f" — {description}"
-                if room.notes:
-                    room.notes = room.notes + "\n" + note_entry
-                else:
-                    room.notes = note_entry
-                room.save()
-                messages.success(request, f'Usterka dla pokoju {room.number} została zgłoszona i ustawiona jako "W konserwacji".')
-        except Exception as e:
-            messages.error(request, f'Błąd: {str(e)}')
-        return redirect('employee:housekeeping')
-
-    # Pokoje z nie rozwiązanymi usterkami (bez względu na status, np. 'maintenance')
-    rooms_with_unresolved = Room.objects.filter(issues__is_resolved=False).distinct().order_by('number')
-
-    rooms_with_issues = []
-    for room in rooms_with_unresolved:
-        unresolved = room.issues.filter(is_resolved=False)
-        rooms_with_issues.append({
-            'room': room,
-            'unresolved_issues': unresolved,
-        })
-
-    # Pokoje "do posprzątania" bez nie rozwiązanych usterek
-    rooms_to_clean = Room.objects.filter(status='to_clean').order_by('number')
-    unresolved_ids = {r['room'].id for r in rooms_with_issues}
-
-    rooms_without_issues = []
-    for room in rooms_to_clean:
-        if room.id in unresolved_ids:
-            continue
-        rooms_without_issues.append({
-            'room': room,
-        })
-
-    context = {
-        'rooms_with_issues': rooms_with_issues,
-        'rooms_without_issues': rooms_without_issues,
-    }
-    return render(request, 'employee/housekeeping.html', context)
+    today = timezone.now().date()
+    rooms = Room.objects.all()
+    
+    # Dodajemy dynamiczną informację, czy pokój jest dziś zarezerwowany
+    for room in rooms:
+        active_reservation = Reservation.objects.filter(
+            room=room,
+            check_in__lte=today,
+            check_out__gte=today,
+            status__in=['confirmed', 'checked_in']
+        ).first()
+        room.active_reservation = active_reservation
+        
+    return render(request, 'employee/rooms.html', {'rooms': rooms})
 
 @login_required
 @employee_required
 def employee_reservations(request):
-    """Lista rezerwacji i operacje na nich dla pracowników"""
-    status_filter = request.GET.get('status')
-    if status_filter:
-        reservations = Reservation.objects.filter(status=status_filter).order_by('-created_at')
-    else:
-        reservations = Reservation.objects.all().order_by('-created_at')
+    if not request.user.is_superuser and request.user.employee_profile.role in ['technician', 'maid']:
+        messages.error(request, "Brak uprawnień do modułu rezerwacji.")
+        return redirect('employee:dashboard')
 
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        reservation_id = request.POST.get('reservation_id')
-        
-        try:
-            reservation = Reservation.objects.get(id=reservation_id)
-            
-            if action == 'confirm':
-                reservation.status = 'confirmed'
-                reservation.room.status = 'reserved'
-                reservation.room.save()
-                reservation.save()
-                messages.success(request, 'Rezerwacja została potwierdzona.')
-            elif action == 'cancel':
-                reservation.status = 'cancelled'
-                # Sprawdź czy pokój jest związany z tą rezerwacją i zwolnij go
-                if reservation.room.status in ['reserved', 'occupied']:
-                    # Sprawdź czy są inne aktywne rezerwacje dla tego pokoju
-                    active_reservations = Reservation.objects.filter(
-                        room=reservation.room,
-                        status__in=['pending', 'confirmed', 'checked_in']
-                    ).exclude(id=reservation.id)
-                    
-                    if not active_reservations.exists():
-                        # Brak innych aktywnych rezerwacji - zwolnij pokój
-                        reservation.room.status = 'available'
-                        reservation.room.save()
-                reservation.save()
-                messages.success(request, 'Rezerwacja została anulowana.')
-            elif action == 'check_in':
-                # Weryfikacja płatności przed zameldowaniem
-                payments = Payment.objects.filter(reservation=reservation)
-                total_paid = payments.filter(payment_status='completed').aggregate(Sum('amount'))['amount__sum'] or 0
-                
-                if total_paid < reservation.price_total:
-                    remaining = reservation.price_total - total_paid
-                    messages.error(
-                        request, 
-                        f'Rezerwacja nie została w pełni opłacona. Brakuje {remaining:.2f} PLN. '
-                        f'Zapłacono: {total_paid:.2f} PLN z {reservation.price_total:.2f} PLN.'
-                    )
-                    return redirect('employee:reservations')
-                
-                reservation.status = 'checked_in'
-                reservation.room.status = 'occupied'
-                reservation.room.save()
-                reservation.save()
-                messages.success(request, 'Gość został zameldowany.')
-            elif action == 'check_out':
-                reservation.status = 'checked_out'
-                # Po wymeldowaniu pokój wymaga sprzątania, nie ustawiamy go od razu jako dostępny
-                reservation.room.status = 'to_clean'
-                reservation.room.save()
-                reservation.save()
-                messages.success(request, 'Gość został wymeldowany. Pokój oznaczono jako "Do sprzątania".')
-            
-        except Exception as e:
-            messages.error(request, f'Błąd: {str(e)}')
-        
-        return redirect('employee:reservations')
-
-    # Obliczanie statusu płatności dla każdej rezerwacji
-    reservations_with_payment = []
-    for reservation in reservations:
-        payments = Payment.objects.filter(reservation=reservation)
-        total_paid = payments.filter(payment_status='completed').aggregate(Sum('amount'))['amount__sum'] or 0
-        remaining = reservation.price_total - total_paid
-        reservations_with_payment.append({
-            'reservation': reservation,
-            'total_paid': total_paid,
-            'remaining': remaining,
-            'is_fully_paid': remaining <= 0
-        })
-    
-    context = {
-        'reservations_data': reservations_with_payment,
-        'status_filter': status_filter,
-    }
-    return render(request, 'employee/reservations.html', context)
-
+    reservations = Reservation.objects.all().order_by('-created_at')
+    return render(request, 'employee/reservations.html', {'reservations': reservations})
 
 @login_required
 @employee_required
-def employee_reservation_detail(request, reservation_id):
-    """Szczegóły rezerwacji dla pracownika"""
-    reservation = get_object_or_404(Reservation, id=reservation_id)
-    payments = Payment.objects.filter(reservation=reservation)
-    total_paid = payments.filter(payment_status='completed').aggregate(Sum('amount'))['amount__sum'] or 0
+def employee_reservation_detail(request, pk):
+    if not request.user.is_superuser and request.user.employee_profile.role in ['technician', 'maid']:
+        messages.error(request, "Brak uprawnień do szczegółów rezerwacji.")
+        return redirect('employee:dashboard')
+
+    reservation = get_object_or_404(Reservation, pk=pk)
     
-    # Candidate rooms for reassignment
+    # Obliczanie płatności
+    payments = reservation.payments.all().order_by('-payment_date')
+    total_paid = sum(p.amount for p in payments if p.payment_status == 'completed')
+    remaining = (reservation.total_price or 0) - total_paid
+
+    # Pokoje do zmiany (kandydaci)
     candidate_rooms = []
     unavailable_rooms = []
-    rooms_qs = Room.objects.filter(capacity__gte=reservation.number_of_guests).exclude(status='maintenance').order_by('number')
-    for r in rooms_qs:
-        # conflicts excluding current reservation
-        conflict_exists = Reservation.objects.filter(
-            room=r,
-            status__in=['pending', 'confirmed', 'checked_in']
-        ).exclude(id=reservation.id).filter(
-            check_in_date__lt=reservation.check_out_date,
-            check_out_date__gt=reservation.check_in_date
-        ).exists()
-        if conflict_exists:
-            unavailable_rooms.append((r, True))
-        else:
-            candidate_rooms.append((r, False))
+    if request.method == 'GET': # Optymalizacja: pobieraj tylko przy GET
+        all_rooms = Room.objects.all().order_by('number')
+        for r in all_rooms:
+            if r.id == reservation.room.id:
+                continue
+            # Sprawdź dostępność
+            collision = Reservation.objects.filter(
+                room=r,
+                check_in__lt=reservation.check_out,
+                check_out__gt=reservation.check_in,
+                status__in=['pending', 'confirmed', 'checked_in']
+            ).exists()
+            if not collision and r.status != 'maintenance':
+                candidate_rooms.append((r, 'Dostępny'))
+            else:
+                unavailable_rooms.append((r, 'Zajęty'))
 
-    # Ensure current assigned room is visible in the select even if it doesn't
-    # match the candidate/unavailable filters (e.g., in maintenance or capacity mismatch)
-    room_ids = {r.id for r, _ in candidate_rooms} | {r.id for r, _ in unavailable_rooms}
-    current_room = None
-    include_current = False
-    if reservation.room:
-        if reservation.room.id not in room_ids:
-            current_room = reservation.room
-            include_current = True
-    
     if request.method == 'POST':
         action = request.POST.get('action')
         
-        if action == 'add_payment':
-            try:
-                Payment.objects.create(
-                    reservation=reservation,
-                    amount=request.POST.get('amount'),
-                    payment_date=request.POST.get('payment_date', date.today()),
-                    payment_method=request.POST.get('payment_method'),
-                    payment_status=request.POST.get('payment_status', 'completed'),
-                    transaction_id=request.POST.get('transaction_id', ''),
-                )
-                messages.success(request, 'Płatność została dodana.')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
-            except Exception as e:
-                messages.error(request, f'Błąd: {str(e)}')
-        elif action == 'edit_payment':
-            try:
-                payment_id = request.POST.get('payment_id')
-                payment = Payment.objects.get(id=payment_id, reservation=reservation)
-                payment.amount = request.POST.get('amount')
-                payment.payment_date = request.POST.get('payment_date', payment.payment_date)
-                payment.payment_method = request.POST.get('payment_method', payment.payment_method)
-                payment.payment_status = request.POST.get('payment_status', payment.payment_status)
-                payment.transaction_id = request.POST.get('transaction_id', payment.transaction_id)
-                payment.save()
-                messages.success(request, 'Płatność została zaktualizowana.')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
-            except Exception as e:
-                messages.error(request, f'Błąd: {str(e)}')
-        elif action == 'delete_payment':
-            try:
-                payment_id = request.POST.get('payment_id')
-                payment = Payment.objects.get(id=payment_id, reservation=reservation)
-                payment.delete()
-                messages.success(request, 'Płatność została usunięta.')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
-            except Exception as e:
-                messages.error(request, f'Błąd: {str(e)}')
+        if action == 'confirm':
+            reservation.status = 'confirmed'
+            reservation.save()
+            messages.success(request, "Rezerwacja została potwierdzona.")
+        
+        elif action == 'cancel':
+            reservation.status = 'cancelled'
+            reservation.save()
+            # Zwolnij pokój jeśli był zajęty
+            if reservation.room.status == 'occupied':
+                reservation.room.status = 'available'
+                reservation.room.save()
+            messages.success(request, "Rezerwacja została anulowana.")
+
+        elif action == 'check_in':
+            reservation.status = 'checked_in'
+            reservation.save()
+            room = reservation.room
+            room.status = 'occupied'
+            room.save()
+            messages.success(request, f"Gość zameldowany. Pokój {room.number} oznaczony jako ZAJĘTY.")
+
+        elif action == 'check_out':
+            # Walidacja salda przed wymeldowaniem
+            if remaining > 0:
+                messages.error(request, f"Nie można wymeldować gościa. Nieopłacone saldo: {remaining} PLN.")
+                return redirect('employee:reservation_detail', pk=pk)
+
+            reservation.status = 'completed'
+            reservation.save()
+            room = reservation.room
+            room.status = 'dirty'
+            room.save()
+            messages.success(request, f"Gość wymeldowany. Pokój {room.number} oznaczony jako DO SPRZĄTANIA.")
+
         elif action == 'change_room':
-            try:
-                new_room_id = request.POST.get('new_room_id')
-                new_room = Room.objects.get(id=new_room_id)
-                # check capacity
-                if new_room.capacity < reservation.number_of_guests:
-                    messages.error(request, 'Wybrany pokój nie obsługuje tej liczby gości.')
-                    return redirect('employee:reservation_detail', reservation_id=reservation.id)
-                # check conflicts
-                conflicts = Reservation.objects.filter(
-                    room=new_room,
-                    status__in=['pending', 'confirmed', 'checked_in']
-                ).exclude(id=reservation.id).filter(
-                    check_in_date__lt=reservation.check_out_date,
-                    check_out_date__gt=reservation.check_in_date
-                )
-                if conflicts.exists() and request.POST.get('confirm_force') != 'yes':
-                    # show conflict in template
-                    payments = Payment.objects.filter(reservation=reservation)  # refresh
-                    total_paid = payments.filter(payment_status='completed').aggregate(Sum('amount'))['amount__sum'] or 0
-                    context = {
-                        'reservation': reservation,
-                        'payments': payments,
-                        'total_paid': total_paid,
-                        'remaining': reservation.price_total - total_paid,
-                        'candidate_rooms': candidate_rooms,
-                        'unavailable_rooms': unavailable_rooms,
-                        'conflict_room': new_room,
-                        'conflict_reservations': conflicts,
-                        'current_room': current_room,
-                        'include_current': include_current,
-                    }
-                    messages.warning(request, f'Konflikt rezerwacji: znaleziono {conflicts.count()} rezerwację(je) dla wybranego pokoju. Potwierdź wymuszenie, aby przypisać.')
-                    return render(request, 'employee/reservation_detail.html', context)
-                # Perform reassignment
-                old_room = reservation.room
+            new_room_id = request.POST.get('new_room_id')
+            confirm_force = request.POST.get('confirm_force') == 'yes'
+            
+            if new_room_id:
+                new_room = get_object_or_404(Room, pk=new_room_id)
+                
+                # 1. Maintenance - blokada bezwzględna
+                if new_room.status == 'maintenance':
+                    messages.error(request, f"Pokój {new_room.number} jest w naprawie. Nie można go przypisać.")
+                    return redirect('employee:reservation_detail', pk=pk)
+                
+                if not confirm_force:
+                    # 2. Status fizyczny (Zajęty/Brudny)
+                    if new_room.status == 'occupied':
+                        messages.error(request, f"Pokój {new_room.number} jest oznaczony jako ZAJĘTY. Użyj przycisku 'Wymuś', aby zignorować.")
+                        return redirect('employee:reservation_detail', pk=pk)
+                    
+                    if new_room.status == 'dirty':
+                        messages.warning(request, f"Pokój {new_room.number} jest DO SPRZĄTANIA. Użyj przycisku 'Wymuś', aby zignorować.")
+                        return redirect('employee:reservation_detail', pk=pk)
+
+                    # 3. Kolizja terminów
+                    collision = Reservation.objects.filter(
+                        room=new_room,
+                        check_in__lt=reservation.check_out,
+                        check_out__gt=reservation.check_in,
+                        status__in=['pending', 'confirmed', 'checked_in']
+                    ).exclude(id=reservation.id).exists()
+                    
+                    if collision:
+                        messages.error(request, f"Pokój {new_room.number} ma kolizję terminów. Użyj przycisku 'Wymuś'.")
+                        return redirect('employee:reservation_detail', pk=pk)
+
                 reservation.room = new_room
                 reservation.save()
-                # Update statuses accordingly
-                if reservation.status in ['pending', 'confirmed']:
-                    new_room.status = 'reserved'
-                elif reservation.status == 'checked_in':
-                    new_room.status = 'occupied'
-                new_room.save()
-                # Release old room if no other active reservations
-                active_res = Reservation.objects.filter(room=old_room, status__in=['pending', 'confirmed', 'checked_in']).exclude(id=reservation.id)
-                if not active_res.exists():
-                    old_room.status = 'available'
-                    old_room.save()
-                messages.success(request, 'Pokój rezerwacji został zmieniony.')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
-            except Exception as e:
-                messages.error(request, f'Błąd: {str(e)}')
-        # (other existing actions stay below)
-        elif action == 'confirm':
+                messages.success(request, f"Pokój zmieniony na {new_room.number}.")
+
+        elif action == 'add_payment':
             try:
-                reservation.status = 'confirmed'
-                reservation.room.status = 'reserved'
-                reservation.room.save()
-                reservation.save()
-                messages.success(request, 'Rezerwacja została potwierdzona.')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
+                # Bezpieczne pobieranie kwoty (usuwanie spacji i twardych spacji, zamiana przecinka)
+                amount_str = request.POST.get('amount', '').strip().replace(' ', '').replace('\xa0', '').replace(',', '.')
+                amount = Decimal(amount_str)
+                
+                method = request.POST.get('payment_method')
+                status = request.POST.get('payment_status')
+                date = request.POST.get('payment_date')
+                Payment.objects.create(
+                    reservation=reservation,
+                    amount=amount,
+                    payment_method=method,
+                    payment_status=status,
+                    payment_date=date
+                )
+                messages.success(request, "Płatność dodana.")
             except Exception as e:
-                messages.error(request, f'Błąd: {str(e)}')
-        elif action == 'cancel':
+                messages.error(request, f"Błąd kwoty: {e}")
+
+        elif action == 'add_charge':
             try:
-                reservation.status = 'cancelled'
-                # Sprawdź czy pokój jest związany z tą rezerwacją i zwolnij go
-                if reservation.room.status in ['reserved', 'occupied']:
-                    # Sprawdź czy są inne aktywne rezerwacje dla tego pokoju
-                    active_reservations = Reservation.objects.filter(
-                        room=reservation.room,
-                        status__in=['pending', 'confirmed', 'checked_in']
-                    ).exclude(id=reservation.id)
+                # Pobierz wartość, usuń białe znaki (spacje i twarde spacje \xa0) i zamień przecinek na kropkę
+                amount_str = request.POST.get('charge_amount', '').strip().replace(' ', '').replace('\xa0', '')
+                charge_amount = Decimal(amount_str.replace(',', '.'))
+                
+                charge_description = request.POST.get('charge_description')
+                
+                if charge_amount > 0:
+                    reservation.total_price = Decimal(reservation.total_price or 0) + charge_amount
                     
-                    if not active_reservations.exists():
-                        # Brak innych aktywnych rezerwacji - zwolnij pokój
-                        reservation.room.status = 'available'
-                        reservation.room.save()
-                reservation.save()
-                messages.success(request, 'Rezerwacja została anulowana.')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
+                    note_entry = f"Dnia {timezone.now().date()} doliczono {charge_amount} PLN: {charge_description}"
+                    if reservation.notes:
+                        reservation.notes += f"\n{note_entry}"
+                    else:
+                        reservation.notes = note_entry
+                    
+                    reservation.save()
+                    messages.success(request, f"Doliczono opłatę {charge_amount} PLN.")
+                else:
+                    messages.error(request, "Kwota musi być dodatnia.")
             except Exception as e:
-                messages.error(request, f'Błąd: {str(e)}')
-        elif action == 'check_in':
-            try:
-                # Weryfikacja płatności przed zameldowaniem
-                payments = Payment.objects.filter(reservation=reservation)
-                total_paid = payments.filter(payment_status='completed').aggregate(Sum('amount'))['amount__sum'] or 0
-                
-                if total_paid < reservation.price_total:
-                    remaining = reservation.price_total - total_paid
-                    messages.error(
-                        request, 
-                        f'Rezerwacja nie została w pełni opłacona. Brakuje {remaining:.2f} PLN. '
-                        f'Zapłacono: {total_paid:.2f} PLN z {reservation.price_total:.2f} PLN. '
-                        f'Dodaj płatność przed zameldowaniem.'
-                    )
-                    return redirect('employee:reservation_detail', reservation_id=reservation.id)
-                
-                reservation.status = 'checked_in'
-                reservation.room.status = 'occupied'
-                reservation.room.save()
-                reservation.save()
-                messages.success(request, 'Gość został zameldowany.')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
-            except Exception as e:
-                messages.error(request, f'Błąd: {str(e)}')
-        elif action == 'check_out':
-            try:
-                reservation.status = 'checked_out'
-                # Po wymeldowaniu pokój oznaczamy jako "Do sprzątania"
-                reservation.room.status = 'to_clean'
-                reservation.room.save()
-                reservation.save()
-                messages.success(request, 'Gość został wymeldowany. Pokój oznaczono jako "Do sprzątania".')
-                return redirect('employee:reservation_detail', reservation_id=reservation.id)
-            except Exception as e:
-                messages.error(request, f'Błąd: {str(e)}')
-    
-    # Show PIN for employees as well when applicable
-    paid_online = payments.filter(payment_method='online', payment_status='completed').exists()
-    show_access_pin = False
-    access_pin = None
-    precheckin_allowed = False
-    try:
-        today = timezone.localdate()
-        delta = (reservation.check_in_date - today).days
-        precheckin_allowed = delta <= 1
-        if paid_online and reservation.room.pin and precheckin_allowed:
-            show_access_pin = True
-            access_pin = reservation.room.pin
-    except Exception:
-        pass
+                print(f"Błąd add_charge: {e}")
+                messages.error(request, f"Wystąpił błąd: {e}")
+
+        return redirect('employee:reservation_detail', pk=pk)
 
     context = {
         'reservation': reservation,
         'payments': payments,
         'total_paid': total_paid,
-        'remaining': reservation.price_total - total_paid,
+        'remaining': remaining,
         'candidate_rooms': candidate_rooms,
         'unavailable_rooms': unavailable_rooms,
-        'current_room': current_room,
-        'include_current': include_current,
-        'show_access_pin': show_access_pin,
-        'access_pin': access_pin,
-        'precheckin_allowed': precheckin_allowed,
-        'paid_online': paid_online,
-        'has_online_pending': payments.filter(payment_method='online', payment_status='pending').exists(),
+        'current_room': reservation.room
     }
-    return render(request, 'employee/reservation_detail.html', context) 
-
+    return render(request, 'employee/reservation_detail.html', context)
 
 @login_required
 @employee_required
 def employee_guests(request):
-    """Zarządzanie gośćmi"""
-    guests = Guest.objects.all().order_by('-created_at')
-    
-    # Wyszukiwanie
-    search_query = request.GET.get('search')
-    if search_query:
-        guests = guests.filter(
-            Q(name__icontains=search_query) |
-            Q(surname__icontains=search_query) |
-            Q(email__icontains=search_query)
-        )
-    
-    context = {
-        'guests': guests,
-        'search_query': search_query,
-    }
-    return render(request, 'employee/guests.html', context)
+    if not request.user.is_superuser and request.user.employee_profile.role in ['technician', 'maid']:
+        messages.error(request, "Brak uprawnień do listy gości.")
+        return redirect('employee:dashboard')
 
+    guests = GuestProfile.objects.all()
+    return render(request, 'employee/guests.html', {'guests': guests})
 
 @login_required
 @employee_required
-def employee_guest_detail(request, guest_id):
-    """Szczegóły gościa"""
-    guest = get_object_or_404(Guest, id=guest_id)
-    reservations = Reservation.objects.filter(guest=guest).order_by('-created_at')
+def employee_guest_detail(request, pk):
+    if not request.user.is_superuser and request.user.employee_profile.role in ['technician', 'maid']:
+        messages.error(request, "Brak uprawnień do szczegółów gościa.")
+        return redirect('employee:dashboard')
+
+    guest = get_object_or_404(GuestProfile, pk=pk)
+    return render(request, 'employee/guest_detail.html', {'guest': guest})
+
+@login_required
+@employee_required
+def employee_create_reservation(request):
+    if not request.user.is_superuser and request.user.employee_profile.role in ['technician', 'maid']:
+        messages.error(request, "Brak uprawnień do tworzenia rezerwacji.")
+        return redirect('employee:dashboard')
+
+    if request.method == 'POST':
+        guest_id = request.POST.get('guest_id')
+        room_id = request.POST.get('room_id')
+        if not room_id:
+            messages.error(request, "Nie wybrano pokoju.")
+            return redirect('employee:reservation_create')
+            
+        check_in_str = request.POST.get('check_in_date')
+        check_out_str = request.POST.get('check_out_date')
+        
+        try:
+            check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
+            check_out = datetime.strptime(check_out_str, '%Y-%m-%d').date()
+            
+            if check_in >= check_out:
+                messages.error(request, "Data zameldowania musi być wcześniejsza niż data wymeldowania.")
+                return redirect('employee:reservation_create')
+
+            # --- POPRAWKA: TRANSAKCJE I CENA ---
+            with transaction.atomic():
+                # Usuwamy select_for_update dla SQLite, aby nie blokować bazy
+                room = get_object_or_404(Room, pk=room_id)
+                
+                if room.status == 'maintenance':
+                    messages.error(request, "Ten pokój jest wyłączony z użytku (konserwacja).")
+                    return redirect('employee:reservation_create')
+                
+                if guest_id:
+                    guest = get_object_or_404(GuestProfile, pk=guest_id)
+                else:
+                    # Tworzenie nowego gościa "w locie" przez pracownika
+                    name = request.POST.get('name')
+                    surname = request.POST.get('surname')
+                    email = request.POST.get('email')
+                    phone = request.POST.get('phone')
+                    
+                    if not name or not surname:
+                        messages.error(request, "Imię i nazwisko są wymagane dla nowego gościa.")
+                        return redirect('employee:reservation_create')
+
+                    # Generowanie bezpiecznej nazwy użytkownika (bez spacji!)
+                    base_username = email.split('@')[0] if email else f"{name}.{surname}".lower()
+                    clean_username = re.sub(r'[^a-zA-Z0-9@.+-_]', '', base_username) or 'guest'
+                    
+                    username = clean_username
+                    counter = 1
+                    while User.objects.filter(username=username).exists():
+                        username = f"{clean_username}{counter}"
+                        counter += 1
+                    
+                    user = User.objects.create_user(username=username, email=email, password=phone or 'hotel123')
+                    user.first_name = name
+                    user.last_name = surname
+                    user.save()
+                    guest = GuestProfile.objects.create(user=user, phone_number=phone)
+
+                conflicting_reservations = Reservation.objects.filter(
+                    room=room,
+                    check_in__lt=check_out,
+                    check_out__gt=check_in,
+                    status__in=['pending', 'confirmed', 'checked_in']
+                ).exists()
+
+                if conflicting_reservations:
+                    messages.error(request, "Ten pokój jest już zajęty w wybranym terminie.")
+                else:
+                    # Tworzymy obiekt w pamięci, aby obliczyć cenę
+                    reservation = Reservation(
+                        guest=guest,
+                        room=room,
+                        check_in=check_in,
+                        check_out=check_out,
+                        number_of_guests=room.capacity, # Domyślnie max pojemność
+                        status='confirmed', # Pracownik tworzy od razu potwierdzoną
+                        reservation_pin=generate_pin()
+                    )
+                    # Obliczamy cenę uwzględniając sezony
+                    total_price = compute_reservation_price(reservation)
+                    reservation.total_price = total_price
+                    reservation.save()
+                    
+                    messages.success(request, f"Rezerwacja utworzona pomyślnie. Cena: {total_price} PLN")
+                    return redirect('employee:reservations')
+
+        except ValueError:
+            messages.error(request, "Nieprawidłowy format daty.")
+        except Exception as e:
+            messages.error(request, f"Wystąpił błąd: {e}")
+            
+    guests = GuestProfile.objects.all()
+    rooms = Room.objects.all()
+    return render(request, 'employee/create_reservation.html', {'guests': guests, 'available_rooms': rooms})
+
+
+# --- Guest Views ---
+
+@login_required
+@guest_required
+def guest_dashboard(request):
+    guest_profile, created = GuestProfile.objects.get_or_create(user=request.user)
+    active_reservations = Reservation.objects.filter(
+        guest=guest_profile, 
+        status__in=['pending', 'confirmed', 'checked_in']
+    ).order_by('check_in')
+    return render(request, 'guest/dashboard.html', {'reservations': active_reservations})
+
+@login_required
+@guest_required
+def guest_reservations(request):
+    guest_profile, created = GuestProfile.objects.get_or_create(user=request.user)
+    reservations = Reservation.objects.filter(guest=guest_profile).order_by('-created_at')
+    return render(request, 'guest/reservations.html', {'reservations': reservations})
+
+@login_required
+@guest_required
+def guest_reservation_detail(request, pk):
+    guest_profile, created = GuestProfile.objects.get_or_create(user=request.user)
+    reservation = get_object_or_404(Reservation, pk=pk, guest=guest_profile)
+    
+    # Auto-generowanie PIN jeśli brakuje (dla starych rezerwacji)
+    if not reservation.reservation_pin:
+        reservation.reservation_pin = generate_pin()
+        reservation.save()
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'pay_online':
+            # Symulacja płatności online
+            Payment.objects.create(
+                reservation=reservation,
+                amount=reservation.total_price,
+                payment_method='online',
+                payment_status='completed'
+            )
+            reservation.status = 'confirmed'
+            reservation.save()
+            messages.success(request, "Płatność przyjęta pomyślnie. Rezerwacja potwierdzona.")
+            return redirect('guest:reservation_detail', pk=pk)
+            
+    return render(request, 'guest/reservation_detail.html', {'reservation': reservation})
+
+@login_required
+@guest_required
+def guest_create_reservation(request):
+    if request.method == 'POST':
+        room_id = request.POST.get('room_id')
+        if not room_id:
+            messages.error(request, "Nie wybrano pokoju.")
+            return redirect('guest:create_reservation')
+            
+        check_in_str = request.POST.get('check_in_date')
+        check_out_str = request.POST.get('check_out_date')
+        payment_method = request.POST.get('payment_method', 'cash') # Domyślnie gotówka, jeśli brak w POST
+        
+        try:
+            check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
+            check_out = datetime.strptime(check_out_str, '%Y-%m-%d').date()
+            
+            if check_in < timezone.now().date():
+                 messages.error(request, "Nie można rezerwować dat w przeszłości.")
+                 return redirect('guest:create_reservation')
+
+            if check_in >= check_out:
+                messages.error(request, "Data zameldowania musi być wcześniejsza niż data wymeldowania.")
+                return redirect('guest:create_reservation')
+
+            # --- POPRAWKA: TRANSAKCJE I CENA ---
+            with transaction.atomic():
+                room = get_object_or_404(Room, pk=room_id)
+                
+                if room.status == 'maintenance':
+                    messages.error(request, "Ten pokój jest wyłączony z użytku (konserwacja).")
+                    return redirect('guest:create_reservation')
+                
+                conflicting_reservations = Reservation.objects.filter(
+                    room=room,
+                    check_in__lt=check_out,
+                    check_out__gt=check_in,
+                    status__in=['pending', 'confirmed', 'checked_in']
+                ).exists()
+
+                if conflicting_reservations:
+                    messages.error(request, "Ten pokój jest niestety zajęty w wybranym terminie.")
+                else:
+                    # Pobierz lub utwórz profil gościa (bezpieczne dla admina)
+                    guest_profile, created = GuestProfile.objects.get_or_create(user=request.user)
+                    
+                    reservation = Reservation(
+                        guest=guest_profile,
+                        room=room,
+                        check_in=check_in,
+                        check_out=check_out,
+                        number_of_guests=room.capacity,
+                        status='pending',
+                        reservation_pin=generate_pin()
+                    )
+                    reservation.payment_method = payment_method
+                    # Użycie funkcji obliczającej cenę sezonową
+                    total_price = compute_reservation_price(reservation)
+                    reservation.total_price = total_price
+                    reservation.save()
+                    
+                    payment_msg = "Opłacono online" if payment_method == 'online' else "Płatność gotówką na miejscu"
+                    messages.success(request, f"Rezerwacja złożona! Kwota: {total_price} PLN. ({payment_msg})")
+                    
+                    return redirect('guest:reservation_detail', pk=reservation.pk)
+                    
+        except ValueError:
+             messages.error(request, "Błąd formatu daty.")
+
+    rooms = Room.objects.filter(status='available')
+    return render(request, 'guest/create_reservation.html', {'available_rooms': rooms})
+
+
+@login_required
+@guest_required
+def guest_profile(request):
+    guest, created = GuestProfile.objects.get_or_create(user=request.user)
+    if request.method == 'POST':
+        guest.phone_number = request.POST.get('phone_number')
+        # user fields
+        request.user.first_name = request.POST.get('first_name')
+        request.user.last_name = request.POST.get('last_name')
+        request.user.save()
+        guest.save()
+        messages.success(request, "Profil zaktualizowany.")
+    return render(request, 'guest/profile.html', {'guest': guest})
+
+# --- NOWA FUNKCJA: Anulowanie rezerwacji przez gościa ---
+@login_required
+@guest_required
+def guest_cancel_reservation(request, pk):
+    guest_profile, created = GuestProfile.objects.get_or_create(user=request.user)
+    reservation = get_object_or_404(Reservation, pk=pk, guest=guest_profile)
+    
+    if request.method == 'POST':
+        # Sprawdź czy można anulować (np. status pending/confirmed i data w przyszłości)
+        if reservation.status in ['pending', 'confirmed'] and reservation.check_in > timezone.now().date():
+            reservation.status = 'cancelled'
+            reservation.save()
+            messages.success(request, "Rezerwacja została anulowana.")
+        else:
+            messages.error(request, "Nie można anulować tej rezerwacji (zbyt późno lub zły status).")
+            
+    return redirect('guest:reservation_detail', pk=pk)
+
+
+# --- Public Views (Registration) ---
+
+def register_view(request):
+    if request.method == 'POST':
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        first_name = request.POST.get('name')
+        last_name = request.POST.get('surname')
+        phone = request.POST.get('phone')
+        username_input = request.POST.get('username')
+        
+        # Jeśli podano nazwę użytkownika, użyj jej, w przeciwnym razie użyj emaila
+        username = username_input if username_input else email
+        
+        # Prosta walidacja (warto dodać lepszą)
+        # from django.contrib.auth.models import User # User jest już zaimportowany na górze pliku
+        if User.objects.filter(username=username).exists():
+            messages.error(request, "Użytkownik o takiej nazwie już istnieje.")
+            return redirect('register')
+        if User.objects.filter(email=email).exists():
+            messages.error(request, "Użytkownik o takim emailu już istnieje.")
+            return redirect('register')
+            
+        user = User.objects.create_user(username=username, email=email, password=password)
+        user.first_name = first_name
+        user.last_name = last_name
+        user.save()
+        
+        GuestProfile.objects.create(user=user, phone_number=phone)
+        
+        messages.success(request, "Konto utworzone! Zaloguj się.")
+        return redirect('login')
+        
+    return render(request, 'guest/register.html')
+
+def public_create_reservation(request):
+    """
+    Umożliwia rezerwację bez logowania (wymaga potem logowania/rejestracji 
+    lub tworzy 'pending' i prosi o dane - w tym uproszczeniu przekierujemy do logowania).
+    W pełnej wersji tutaj można by zbierać dane gościa "w locie".
+    """
+    if request.method == 'POST':
+        room_id = request.POST.get('room_id')
+        check_in_str = request.POST.get('check_in_date')
+        check_out_str = request.POST.get('check_out_date')
+        
+        # Dane osobowe (jeśli użytkownik nie jest zalogowany)
+        email = request.POST.get('email')
+        first_name = request.POST.get('name')
+        last_name = request.POST.get('surname')
+        phone = request.POST.get('phone')
+        
+        create_account_flag = request.POST.get('create_account')
+        password_input = request.POST.get('password')
+        username_input = request.POST.get('username')
+
+        try:
+            check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
+            check_out = datetime.strptime(check_out_str, '%Y-%m-%d').date()
+
+            if check_in >= check_out:
+                messages.error(request, "Data zameldowania musi być wcześniejsza niż data wymeldowania.")
+                return redirect('public_create_reservation')
+
+            with transaction.atomic():
+                # 1. Obsługa użytkownika (Logowanie / Rejestracja w tle)
+                if request.user.is_authenticated:
+                    user = request.user
+                    guest_profile = user.guest_profile
+                else:
+                    # Sprawdź czy email już istnieje
+                    if User.objects.filter(email=email).exists():
+                        messages.error(request, "Konto z tym adresem email już istnieje. Zaloguj się.")
+                        return redirect('login')
+                    
+                    # Ustalanie hasła i loginu
+                    if create_account_flag == 'on':
+                        # Użytkownik chce konto - używamy jego hasła
+                        final_password = password_input if password_input else phone
+                        final_username = username_input if username_input else email
+                    else:
+                        # Konto tymczasowe - hasło to nr telefonu
+                        final_password = phone
+                        final_username = email
+
+                    # Tworzenie konta
+                    user = User.objects.create_user(username=final_username, email=email, password=final_password)
+                    user.first_name = first_name
+                    user.last_name = last_name
+                    user.save()
+                    guest_profile = GuestProfile.objects.create(user=user, phone_number=phone)
+                    
+                    # Automatyczne logowanie po utworzeniu
+                    login(request, user)
+                    
+                    # Informacja dla gościa bez konta
+                    if create_account_flag != 'on':
+                        messages.info(request, f"Utworzono konto tymczasowe dla tej rezerwacji. Twój login: {email}, hasło: {phone}")
+
+                # 2. Tworzenie rezerwacji
+                room = get_object_or_404(Room, pk=room_id)
+                
+                # (Tu można dodać sprawdzenie dostępności jak w innych widokach)
+                
+                reservation = Reservation(
+                    guest=guest_profile,
+                    room=room,
+                    check_in=check_in,
+                    check_out=check_out,
+                    number_of_guests=room.capacity,
+                    status='pending',
+                    reservation_pin=generate_pin()
+                )
+                reservation.payment_method = 'online' if request.POST.get('payment_method') == 'online' else 'cash'
+                reservation.total_price = compute_reservation_price(reservation)
+                reservation.save()
+                
+                messages.success(request, f"Rezerwacja przyjęta! Witaj {user.first_name}.")
+                return redirect('guest:reservation_detail', pk=reservation.pk)
+
+        except ValueError:
+            messages.error(request, "Błąd danych.")
+        except Exception as e:
+            messages.error(request, f"Wystąpił błąd: {e}")
+
+    rooms = Room.objects.filter(status='available')
+    return render(request, 'guest/create_reservation_public.html', {'available_rooms': rooms})
+
+# --- Inne widoki pracownika ---
+@login_required
+@employee_required
+def employee_housekeeping(request):
+    # Prosty widok dla pokojówek / statusu pokoi
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        room_id = request.POST.get('room_id')
+        room = get_object_or_404(Room, pk=room_id)
+        
+        if action == 'mark_clean':
+            room.status = 'available'
+            room.save()
+            messages.success(request, f"Pokój {room.number} oznaczony jako POSPRZĄTANY (Wolny).")
+        elif action == 'report_issue':
+            title = request.POST.get('issue_title')
+            desc = request.POST.get('issue_description')
+            room.status = 'maintenance'
+            room.notes = f"{room.notes}\n[USTERKA] {title}: {desc}".strip()
+            room.save()
+            messages.warning(request, f"Zgłoszono usterkę w pokoju {room.number}. Status: W NAPRAWIE.")
+            
+        return redirect('employee:housekeeping')
+        
+    rooms = Room.objects.all().order_by('number')
+    return render(request, 'employee/housekeeping.html', {'rooms': rooms})
+
+@login_required
+@employee_required
+def employee_maintenance(request):
+    # Widok dla Działu Technicznego
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        room_id = request.POST.get('room_id')
+        room = get_object_or_404(Room, pk=room_id)
+        
+        if action == 'repair_done':
+            # Logika biznesowa: Po naprawie wchodzi serwis sprzątający
+            room.status = 'dirty'
+            room.notes = "" # Czyścimy opis usterki po naprawie
+            room.save()
+            messages.success(request, f"Usterka w pokoju {room.number} usunięta. Pokój przekazany do sprzątania.")
+        elif action == 'clean_done':
+            room.status = 'available'
+            room.save()
+            messages.success(request, f"Pokój {room.number} oznaczony jako POSPRZĄTANY (Wolny).")
+            
+        return redirect('employee:maintenance')
+
+    maintenance_rooms = Room.objects.filter(status='maintenance').order_by('number')
+    dirty_rooms = Room.objects.filter(status='dirty').order_by('number')
+    return render(request, 'employee/maintenance.html', {'maintenance_rooms': maintenance_rooms, 'dirty_rooms': dirty_rooms})
+
+# --- Manager Views ---
+
+@login_required
+@employee_required
+def manager_employees(request):
+    if not request.user.is_superuser and (not hasattr(request.user, 'employee_profile') or request.user.employee_profile.role != 'manager'):
+        messages.error(request, "Brak uprawnień menadżerskich.")
+        return redirect('employee:dashboard')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'add_employee':
+            first_name = request.POST.get('first_name')
+            last_name = request.POST.get('last_name')
+            email = request.POST.get('email')
+            role = request.POST.get('role')
+            password = request.POST.get('password')
+            
+            # Proste generowanie loginu z maila
+            username = email.split('@')[0]
+            if User.objects.filter(username=username).exists():
+                 username = f"{username}_{random.randint(100,999)}"
+
+            if User.objects.filter(email=email).exists():
+                 messages.error(request, "Użytkownik o takim emailu już istnieje.")
+            else:
+                try:
+                    with transaction.atomic():
+                        user = User.objects.create_user(username=username, email=email, password=password)
+                        user.first_name = first_name
+                        user.last_name = last_name
+                        user.save()
+                        EmployeeProfile.objects.create(user=user, role=role)
+                        messages.success(request, f"Pracownik {first_name} {last_name} dodany pomyślnie.")
+                except Exception as e:
+                    messages.error(request, f"Błąd podczas dodawania: {e}")
+        
+        elif action == 'toggle_active':
+            user_id = request.POST.get('user_id')
+            user = get_object_or_404(User, pk=user_id)
+            if user.is_superuser:
+                 messages.error(request, "Nie można dezaktywować administratora.")
+            else:
+                user.is_active = not user.is_active
+                user.save()
+                status = "aktywowany" if user.is_active else "dezaktywowany"
+                messages.success(request, f"Pracownik {user.get_full_name()} został {status}.")
+                
+        return redirect('employee:manager_employees')
+
+    employees = EmployeeProfile.objects.all().select_related('user').order_by('role')
+    return render(request, 'employee/manager_employees.html', {'employees': employees})
+
+@login_required
+@employee_required
+def manager_reports(request):
+    if not request.user.is_superuser and (not hasattr(request.user, 'employee_profile') or request.user.employee_profile.role != 'manager'):
+        messages.error(request, "Brak uprawnień menadżerskich.")
+        return redirect('employee:dashboard')
+
+    today = timezone.now().date()
+    current_month = today.month
+    current_year = today.year
+    
+    # 1. Przychód (suma wpłat ZREALIZOWANYCH w tym miesiącu)
+    revenue_data = Payment.objects.filter(
+        payment_date__month=current_month, 
+        payment_date__year=current_year, 
+        payment_status='completed'
+    ).aggregate(Sum('amount'))
+    monthly_revenue = revenue_data['amount__sum'] or 0
+    
+    # 2. Obłożenie (aktualne)
+    total_rooms = Room.objects.count()
+    occupied_rooms = Room.objects.filter(status='occupied').count()
+    occupancy_rate = 0
+    if total_rooms > 0:
+        occupancy_rate = round((occupied_rooms / total_rooms) * 100, 1)
+        
+    # 3. Anulowane rezerwacje (w tym miesiącu)
+    cancelled_reservations = Reservation.objects.filter(status='cancelled').order_by('-created_at')[:20]
     
     context = {
-        'guest': guest,
-        'reservations': reservations,
+        'monthly_revenue': monthly_revenue,
+        'occupancy_rate': occupancy_rate,
+        'cancelled_reservations': cancelled_reservations,
+        'total_rooms': total_rooms,
+        'occupied_rooms': occupied_rooms,
+        'current_date': today
     }
-    return render(request, 'employee/guest_detail.html', context)
+    return render(request, 'employee/manager_reports.html', context)
+
+@login_required
+@employee_required
+def manager_report_pdf(request):
+    if not canvas:
+        messages.error(request, "Brak biblioteki reportlab. Zainstaluj: pip install reportlab")
+        return redirect('employee:manager_reports')
+        
+    if not request.user.is_superuser and (not hasattr(request.user, 'employee_profile') or request.user.employee_profile.role != 'manager'):
+        messages.error(request, "Brak uprawnień.")
+        return redirect('employee:dashboard')
+
+    today = timezone.now().date()
+    current_month = today.month
+    current_year = today.year
+    
+    revenue_data = Payment.objects.filter(
+        payment_date__month=current_month, 
+        payment_date__year=current_year, 
+        payment_status='completed'
+    ).aggregate(Sum('amount'))
+    monthly_revenue = revenue_data['amount__sum'] or 0
+    
+    total_rooms = Room.objects.count()
+    occupied_rooms = Room.objects.filter(status='occupied').count()
+    occupancy_rate = 0
+    if total_rooms > 0:
+        occupancy_rate = round((occupied_rooms / total_rooms) * 100, 1)
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    p.setFont("Helvetica-Bold", 18)
+    p.drawString(50, height - 50, clean_text(f"Raport Managerski - {today.strftime('%m/%Y')}"))
+    
+    p.setFont("Helvetica", 12)
+    p.drawString(50, height - 80, clean_text(f"Wygenerowano: {today.strftime('%Y-%m-%d')}"))
+    
+    p.drawString(50, height - 120, clean_text(f"Przychod (miesiac): {monthly_revenue} PLN"))
+    p.drawString(50, height - 140, clean_text(f"Oblozenie (teraz): {occupancy_rate}%"))
+    p.drawString(50, height - 160, clean_text(f"Zajete pokoje: {occupied_rooms} / {total_rooms}"))
+    
+    p.showPage()
+    p.save()
+    
+    buffer.seek(0)
+    return FileResponse(buffer, as_attachment=True, filename=f"raport_{current_month}_{current_year}.pdf")
+
+@login_required
+def reservation_invoice_pdf(request, pk):
+    if not canvas:
+        messages.error(request, "Brak biblioteki reportlab. Zainstaluj: pip install reportlab")
+        return redirect('home')
+
+    reservation = get_object_or_404(Reservation, pk=pk)
+    
+    # Sprawdzenie uprawnień (Gość właściciel lub Pracownik)
+    is_owner = hasattr(request.user, 'guest_profile') and reservation.guest == request.user.guest_profile
+    is_staff = hasattr(request.user, 'employee_profile') or request.user.is_superuser
+    
+    if not (is_owner or is_staff):
+        messages.error(request, "Brak uprawnień.")
+        return redirect('home')
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    # Nagłówek
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, height - 50, clean_text(f"Faktura / Rachunek #{reservation.id}"))
+    
+    p.setFont("Helvetica", 12)
+    p.drawString(50, height - 80, clean_text(f"Data: {timezone.now().strftime('%Y-%m-%d')}"))
+    p.drawString(50, height - 100, "Hotel XYZ")
+    
+    # Dane nabywcy
+    p.drawString(50, height - 140, "Nabywca:")
+    p.drawString(50, height - 155, clean_text(f"{reservation.guest.user.first_name} {reservation.guest.user.last_name}"))
+    p.drawString(50, height - 170, clean_text(f"{reservation.guest.user.email}"))
+    
+    # Szczegóły
+    p.drawString(50, height - 210, "Szczegoly rezerwacji:")
+    p.drawString(50, height - 230, clean_text(f"Pokoj: {reservation.room.number} ({reservation.room.get_room_type_display()})"))
+    p.drawString(50, height - 250, clean_text(f"Termin: {reservation.check_in} - {reservation.check_out}"))
+    p.drawString(50, height - 270, clean_text(f"Liczba gosci: {reservation.number_of_guests}"))
+    
+    p.drawString(50, height - 310, clean_text(f"Status: {reservation.get_status_display()}"))
+    p.drawString(50, height - 330, clean_text(f"Metoda platnosci: {reservation.get_payment_method_display()}"))
+    
+    # Podsumowanie
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, height - 370, clean_text(f"Razem: {reservation.total_price} PLN"))
+    
+    p.showPage()
+    p.save()
+    
+    buffer.seek(0)
+    return FileResponse(buffer, as_attachment=True, filename=f"faktura_{reservation.id}.pdf")
+
+@login_required
+@employee_required
+def employee_pricing(request):
+    if not request.user.is_superuser and request.user.employee_profile.role in ['technician', 'maid']:
+        messages.error(request, "Brak uprawnień do cennika.")
+        return redirect('employee:dashboard')
+
+    # Widok cennika (można rozbudować o edycję sezonów)
+    from .models import SeasonPrice
+    season_prices = SeasonPrice.objects.all()
+    return render(request, 'employee/pricing.html', {'season_prices': season_prices})
+
+@login_required
+@employee_required
+def employee_room_create(request):
+    if not request.user.is_superuser and request.user.employee_profile.role in ['technician', 'maid']:
+        messages.error(request, "Brak uprawnień do dodawania pokoi.")
+        return redirect('employee:dashboard')
+
+    if request.method == 'POST':
+        number = request.POST.get('number')
+        capacity = request.POST.get('capacity')
+        price = request.POST.get('price')
+        # Pobieramy 'room_type' lub 'type' (zabezpieczenie przed różnymi nazwami w formularzu)
+        room_type = request.POST.get('room_type') or request.POST.get('type')
+        
+        if number and capacity and price and room_type:
+            try:
+                Room.objects.create(
+                    number=number,
+                    capacity=capacity,
+                    price=price,
+                    room_type=room_type,
+                    status='available'
+                )
+                messages.success(request, "Pokój dodany.")
+                return redirect('employee:rooms')
+            except Exception as e:
+                messages.error(request, f"Błąd: {e}")
+        else:
+            messages.error(request, "Wszystkie pola są wymagane.")
+    return render(request, 'employee/room_create.html')
+
+# --- API Views ---
+
+def room_availability_api(request):
+    """
+    API zwracające dostępne pokoje w zadanym terminie (JSON).
+    Używane przez JavaScript w formularzu rezerwacji.
+    """
+    check_in_str = request.GET.get('check_in_date')
+    check_out_str = request.GET.get('check_out_date')
+    guests_str = request.GET.get('number_of_guests', '1')
+
+    if not check_in_str or not check_out_str:
+        return JsonResponse({'error': 'Brak dat'}, status=400)
+
+    try:
+        check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
+        check_out = datetime.strptime(check_out_str, '%Y-%m-%d').date()
+        guests = int(guests_str)
+    except ValueError:
+        return JsonResponse({'error': 'Błędny format danych'}, status=400)
+
+    # Pobierz wszystkie pokoje, które nie są w naprawie
+    # Status 'occupied' czy 'dirty' nie blokuje przyszłych rezerwacji
+    rooms = Room.objects.exclude(status='maintenance').filter(capacity__gte=guests)
+    
+    print(f"API DEBUG: Szukam pokoi dla {guests} os. od {check_in} do {check_out}. Znaleziono wstępnie: {rooms.count()}")
+    
+    available_now = []
+    
+    for room in rooms:
+        # Sprawdź kolizje z istniejącymi rezerwacjami
+        collision = Reservation.objects.filter(
+            room=room,
+            check_in__lt=check_out,
+            check_out__gt=check_in,
+            status__in=['pending', 'confirmed', 'checked_in']
+        ).exists()
+        
+        if collision:
+            print(f"API DEBUG: Pokój {room.number} odrzucony - kolizja terminów.")
+        
+        if not collision:
+            available_now.append({
+                'id': room.id,
+                'number': room.number,
+                'price': str(room.price),
+                'capacity': room.capacity,
+                'room_type': room.get_room_type_display()
+            })
+
+    print(f"API DEBUG: Zwracam {len(available_now)} dostępnych pokoi.")
+
+    return JsonResponse({
+        'available_now': available_now,
+        'available_later': [], # Placeholder na przyszłość
+        'capacity_issue': len(available_now) == 0 and not rooms.exists()
+    })

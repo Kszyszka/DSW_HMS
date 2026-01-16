@@ -1,75 +1,107 @@
-{% extends 'base.html' %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel XYZ - Twój wypoczynek</title>
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        html { overflow-y: scroll; }
+        body { display: flex; flex-direction: column; min-height: 100vh; }
+        .hero-section {
+            /* Zdjęcie w tle (placeholder z Unsplash) */
+            background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            flex: 1;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+        .navbar { background-color: rgba(0, 0, 0, 0.8) !important; }
+        .btn-cta { padding: 15px 40px; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
 
-{% block title %}Strona Główna - HMS{% endblock %}
-
-{% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-8">
-        <div class="card shadow">
-            <div class="card-body text-center">
-                <h1 class="display-4 mb-4">
-                    <i class="bi bi-building text-primary"></i>
-                    Hotel Management System
-                </h1>
-                <p class="lead">System zarządzania hotelem dla gości i pracowników</p>
-                
-                {% if not user.is_authenticated %}
-                    <div class="mt-4">
-                        <div class="row g-3 justify-content-center">
-                            <div class="col-md-3">
-                                <a href="{% url 'login' %}" class="btn btn-primary btn-lg w-100">
-                                    <i class="bi bi-box-arrow-in-right"></i> Zaloguj się
-                                </a>
-                            </div>
-                            <div class="col-md-3">
-                                <a href="{% url 'guest:register' %}" class="btn btn-outline-primary btn-lg w-100">
-                                    <i class="bi bi-person-plus"></i> Zarejestruj
-                                </a>
-                            </div>
-                            <div class="col-md-4">
-                                <a href="{% url 'guest:create_reservation_public' %}" class="btn btn-success btn-lg w-100">
-                                    <i class="bi bi-calendar-plus"></i> Zarezerwuj bez logowania
-                                </a>
-                            </div>
-                        </div>
-                    </div>
+<!-- Nawigacja -->
+<nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="{% url 'home' %}">HOTEL XYZ</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto align-items-center">
+                {% if user.is_authenticated %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown">
+                            Witaj, {{ user.first_name|default:user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            {% if user.is_superuser %}
+                                <li><a class="dropdown-item fw-bold text-danger" href="/admin/">⚙️ Panel Admina</a></li>
+                                <li><a class="dropdown-item fw-bold text-primary" href="{% url 'employee:dashboard' %}">🔧 Panel HMS</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                            {% elif user.employee_profile %}
+                                <li><a class="dropdown-item fw-bold text-primary" href="{% url 'employee:dashboard' %}">🔧 Panel HMS</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                            {% else %}
+                                <li><a class="dropdown-item" href="{% url 'guest:dashboard' %}">Moje Rezerwacje</a></li>
+                                <li><a class="dropdown-item" href="{% url 'guest:profile' %}">Mój Profil</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                            {% endif %}
+                            <li><a class="dropdown-item" href="{% url 'logout' %}">Wyloguj</a></li>
+                        </ul>
+                    </li>
                 {% else %}
-                    <div class="mt-4">
-                        {% if user.is_superuser %}
-                            <div class="row g-3 justify-content-center">
-                                <div class="col-md-4">
-                                    <a href="{% url 'guest:dashboard' %}" class="btn btn-outline-primary btn-lg w-100">
-                                        <i class="bi bi-house-door"></i> Panel Gościa
-                                    </a>
-                                </div>
-                                <div class="col-md-4">
-                                    <a href="{% url 'employee:dashboard' %}" class="btn btn-outline-success btn-lg w-100">
-                                        <i class="bi bi-speedometer2"></i> Panel Pracownika
-                                    </a>
-                                </div>
-                                <div class="col-md-4">
-                                    <a href="/admin/" class="btn btn-outline-warning btn-lg w-100" target="_blank">
-                                        <i class="bi bi-gear"></i> Panel Admin
-                                    </a>
-                                </div>
-                            </div>
-                            <p class="text-muted mt-3">
-                                <small>Jako administrator masz dostęp do wszystkich paneli systemu</small>
-                            </p>
-                        {% elif user.guest_profile %}
-                            <a href="{% url 'guest:dashboard' %}" class="btn btn-primary btn-lg">
-                                <i class="bi bi-house-door"></i> Przejdź do Panelu Gościa
-                            </a>
-                        {% elif user.employee_profile %}
-                            <a href="{% url 'employee:dashboard' %}" class="btn btn-primary btn-lg">
-                                <i class="bi bi-speedometer2"></i> Przejdź do Panelu Pracownika
-                            </a>
-                        {% endif %}
-                    </div>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">Zaloguj</a></li>
+                    <li class="nav-item"><a class="nav-link btn btn-outline-light ms-2 px-3" href="{% url 'register' %}">Zarejestruj</a></li>
                 {% endif %}
-            </div>
+            </ul>
         </div>
     </div>
-</div>
-{% endblock %}
+</nav>
 
+<!-- Sekcja Hero (Główna) -->
+<div class="hero-section">
+    <div class="container">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+        <h1 class="display-3 fw-bold mb-4">Luksus, na który zasługujesz</h1>
+        <p class="lead mb-5">Odkryj wyjątkowy komfort w sercu miasta. Zarezerwuj swój pobyt już dziś.</p>
+        
+        <!-- Główny przycisk rezerwacji -->
+        <a href="{% url 'public_create_reservation' %}" class="btn btn-success btn-cta rounded-pill shadow-lg">
+            Zarezerwuj Pobyt
+        </a>
+    </div>
+</div>
+
+<!-- Stopka -->
+<footer class="bg-dark text-white-50 py-3 text-center">
+    <div class="container">
+        <small>&copy; 2026 Hotel XYZ. Wszelkie prawa zastrzeżone.</small>
+        {% if user.is_authenticated and user.employee_profile %}
+            <div class="mt-2">
+                <a href="{% url 'employee:dashboard' %}" class="text-decoration-none text-secondary" style="font-size: 0.8rem;">Wejście do systemu HMS</a>
+            </div>
+        {% endif %}
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
