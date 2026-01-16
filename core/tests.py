@@ -136,7 +136,7 @@ class PaymentTestCase(TestCase):
 
 
 class ComputeReservationPriceWithSeasonTestCase(TestCase):
-    """Test 4: Obliczanie ceny rezerwacji z sezonem - kluczowa logika biznesowa"""
+    """Test 4: Obliczanie ceny rezerwacji z sezonem"""
     def setUp(self):
         self.user = User.objects.create_user(
             username='seasonguest',
