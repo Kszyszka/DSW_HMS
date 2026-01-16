@@ -494,16 +494,26 @@ def guest_reservation_detail(request, pk):
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'pay_online':
-            # Symulacja płatności online
-            Payment.objects.create(
-                reservation=reservation,
-                amount=reservation.total_price,
-                payment_method='online',
-                payment_status='completed'
-            )
-            reservation.status = 'confirmed'
-            reservation.save()
-            messages.success(request, "Płatność przyjęta pomyślnie. Rezerwacja potwierdzona.")
+            # Symulacja płatności online z obsługą wyjątków
+            try:
+                with transaction.atomic():
+                    # Tworzenie płatności i aktualizacja statusu w jednej transakcji
+                    Payment.objects.create(
+                        reservation=reservation,
+                        amount=reservation.total_price,
+                        payment_method='online',
+                        payment_status='completed'
+                    )
+                    reservation.status = 'confirmed'
+                    reservation.save()
+                messages.success(request, "Płatność przyjęta pomyślnie. Rezerwacja potwierdzona.")
+            except Exception as e:
+                # Obsługa błędów płatności online
+                messages.error(request, "Wystąpił błąd podczas przetwarzania płatności online. Spróbuj ponownie lub skontaktuj się z obsługą.")
+                # Logowanie błędu (w produkcji można użyć loggera)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Błąd płatności online dla rezerwacji {reservation.id}: {str(e)}", exc_info=True)
             return redirect('guest:reservation_detail', pk=pk)
             
     return render(request, 'guest/reservation_detail.html', {'reservation': reservation})
