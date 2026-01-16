@@ -7,8 +7,12 @@ from decimal import Decimal
 # --- Modele Użytkowników ---
 
 class GuestProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='guest_profile')
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='guest_profile', verbose_name="Użytkownik")
+    phone_number = models.CharField(max_length=15, blank=True, null=True, verbose_name="Numer telefonu")
+
+    class Meta:
+        verbose_name = "Gość"
+        verbose_name_plural = "Goście"
 
     def __str__(self):
         return f"{self.user.username} (Gość)"
@@ -20,9 +24,13 @@ class EmployeeProfile(models.Model):
         ('maid', 'Pokojówka'),
         ('technician', 'Pracownik techniczny'),
     )
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='employee_profile')
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='receptionist')
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='employee_profile', verbose_name="Użytkownik")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='receptionist', verbose_name="Stanowisko")
+    phone_number = models.CharField(max_length=15, blank=True, null=True, verbose_name="Numer telefonu")
+
+    class Meta:
+        verbose_name = "Pracownik"
+        verbose_name_plural = "Pracownicy"
 
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
@@ -42,28 +50,40 @@ class Room(models.Model):
         ('maintenance', 'W naprawie'),
     )
     
-    number = models.CharField(max_length=10, unique=True)
-    capacity = models.IntegerField(default=2)
-    price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Cena bazowa za noc")
-    room_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='double')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')
-    notes = models.TextField(blank=True, default='')
+    number = models.CharField(max_length=10, unique=True, verbose_name="Numer pokoju")
+    capacity = models.IntegerField(default=2, verbose_name="Pojemność")
+    price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Cena bazowa za noc", verbose_name="Cena")
+    room_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='double', verbose_name="Typ pokoju")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available', verbose_name="Status")
+    notes = models.TextField(blank=True, default='', verbose_name="Uwagi")
+    
+    class Meta:
+        verbose_name = "Pokój"
+        verbose_name_plural = "Pokoje"
     
     def __str__(self):
         return f"Pokój {self.number} ({self.get_room_type_display()})"
 
 class Season(models.Model):
-    name = models.CharField(max_length=100)
-    start_date = models.DateField()
-    end_date = models.DateField()
+    name = models.CharField(max_length=100, verbose_name="Nazwa sezonu")
+    start_date = models.DateField(verbose_name="Data początkowa")
+    end_date = models.DateField(verbose_name="Data końcowa")
+
+    class Meta:
+        verbose_name = "Sezon"
+        verbose_name_plural = "Sezony"
 
     def __str__(self):
         return f"{self.name} ({self.start_date} - {self.end_date})"
 
 class SeasonPrice(models.Model):
-    season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name='prices')
-    room_type = models.CharField(max_length=20, choices=Room.TYPE_CHOICES)
-    price_multiplier = models.DecimalField(max_digits=4, decimal_places=2, default=1.0, help_text="Mnożnik ceny bazowej (np. 1.5 dla +50%)")
+    season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name='prices', verbose_name="Sezon")
+    room_type = models.CharField(max_length=20, choices=Room.TYPE_CHOICES, verbose_name="Typ pokoju")
+    price_multiplier = models.DecimalField(max_digits=4, decimal_places=2, default=1.0, help_text="Mnożnik ceny bazowej (np. 1.5 dla +50%)", verbose_name="Mnożnik ceny")
+    
+    class Meta:
+        verbose_name = "Cena sezonowa"
+        verbose_name_plural = "Ceny sezonowe"
     
     def __str__(self):
         return f"{self.season.name} - {self.get_room_type_display()} (x{self.price_multiplier})"
@@ -83,17 +103,21 @@ class Reservation(models.Model):
         ('online', 'Online'),
     )
 
-    guest = models.ForeignKey(GuestProfile, on_delete=models.CASCADE, related_name='reservations')
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='reservations')
-    check_in = models.DateField()
-    check_out = models.DateField()
-    number_of_guests = models.IntegerField(default=1)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    created_at = models.DateTimeField(auto_now_add=True)
-    total_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    reservation_pin = models.CharField(max_length=6, blank=True, null=True)
-    payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default='cash')
-    notes = models.TextField(blank=True, null=True, help_text="Notatki do rezerwacji (np. uszkodzenia, dodatkowe opłaty)")
+    guest = models.ForeignKey(GuestProfile, on_delete=models.CASCADE, related_name='reservations', verbose_name="Gość")
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='reservations', verbose_name="Pokój")
+    check_in = models.DateField(verbose_name="Data zameldowania")
+    check_out = models.DateField(verbose_name="Data wymeldowania")
+    number_of_guests = models.IntegerField(default=1, verbose_name="Liczba gości")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Status")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Utworzono")
+    total_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name="Cena całkowita")
+    reservation_pin = models.CharField(max_length=6, blank=True, null=True, verbose_name="PIN")
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default='cash', verbose_name="Metoda płatności")
+    notes = models.TextField(blank=True, null=True, help_text="Notatki do rezerwacji (np. uszkodzenia, dodatkowe opłaty)", verbose_name="Notatki")
+    
+    class Meta:
+        verbose_name = "Rezerwacja"
+        verbose_name_plural = "Rezerwacje"
     
     def __str__(self):
         return f"Rezerwacja {self.id} - {self.guest.user.username}"
@@ -123,12 +147,16 @@ class Payment(models.Model):
         ('completed', 'Zrealizowana'),
         ('failed', 'Nieudana'),
     )
-    reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name='payments')
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_date = models.DateField(default=timezone.now)
-    payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS, default='cash')
-    payment_status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='completed')
-    transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name='payments', verbose_name="Rezerwacja")
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Kwota")
+    payment_date = models.DateField(default=timezone.now, verbose_name="Data płatności")
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS, default='cash', verbose_name="Metoda płatności")
+    payment_status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='completed', verbose_name="Status płatności")
+    transaction_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="ID transakcji")
+
+    class Meta:
+        verbose_name = "Płatność"
+        verbose_name_plural = "Płatności"
 
     def __str__(self):
         return f"Płatność {self.id} ({self.amount} PLN)"
