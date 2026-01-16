@@ -4,7 +4,7 @@ from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.contrib.auth.models import User
-from .models import Room, Reservation, GuestProfile, EmployeeProfile, Payment, compute_reservation_price
+from .models import Room, Reservation, GuestProfile, EmployeeProfile, Payment, compute_reservation_price, Season, SeasonPrice
 from .decorators import employee_required, guest_required, manager_required
 from django.utils import timezone
 from django.db.models import Q, Sum
@@ -180,6 +180,11 @@ def employee_reservation_detail(request, pk):
         return redirect('employee:dashboard')
 
     reservation = get_object_or_404(Reservation, pk=pk)
+    
+    # Zabezpieczenie: Jeśli cena nie została zapisana (stare rezerwacje), oblicz ją teraz
+    if not reservation.total_price:
+        reservation.total_price = compute_reservation_price(reservation)
+        reservation.save()
     
     # Obliczanie płatności
     payments = reservation.payments.all().order_by('-payment_date')
@@ -996,9 +1001,14 @@ def employee_pricing(request):
         return redirect('employee:dashboard')
 
     # Widok cennika (można rozbudować o edycję sezonów)
-    from .models import SeasonPrice
-    season_prices = SeasonPrice.objects.all()
-    return render(request, 'employee/pricing.html', {'season_prices': season_prices})
+    seasons = Season.objects.all().order_by('start_date')
+    season_prices = SeasonPrice.objects.all().select_related('season')
+    
+    context = {
+        'seasons': seasons,
+        'season_prices': season_prices
+    }
+    return render(request, 'employee/pricing.html', context)
 
 @login_required
 @employee_required
@@ -1073,10 +1083,20 @@ def room_availability_api(request):
             print(f"API DEBUG: Pokój {room.number} odrzucony - kolizja terminów.")
         
         if not collision:
+            # Obliczamy rzeczywistą cenę za pobyt (z uwzględnieniem sezonów)
+            # Tworzymy tymczasową rezerwację (niezapisywaną w bazie) do kalkulacji
+            dummy_res = Reservation(room=room, check_in=check_in, check_out=check_out)
+            total_price = compute_reservation_price(dummy_res)
+
+            days = (check_out - check_in).days
+            avg_price = total_price / days if days > 0 else total_price
+
             available_now.append({
                 'id': room.id,
                 'number': room.number,
-                'price': str(room.price),
+                'price': str(round(avg_price, 2)), # To pole idzie do dropdowna jako "Cena/noc"
+                'total_price': str(total_price),   # To pole zawiera pełną kwotę (np. 414.00)
+                'average_price': str(round(avg_price, 2)), # Pomocnicze pole
                 'capacity': room.capacity,
                 'room_type': room.get_room_type_display()
             })

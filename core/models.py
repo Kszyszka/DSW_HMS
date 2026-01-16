@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from datetime import timedelta
 from django.utils import timezone
+from decimal import Decimal
 
 # --- Modele Użytkowników ---
 
@@ -101,6 +102,15 @@ class Reservation(models.Model):
     def is_paid(self):
         return self.status in ['confirmed', 'checked_in', 'completed']
 
+    @property
+    def average_daily_rate(self):
+        """Zwraca średnią cenę za noc w tej rezerwacji (uwzględniając sezony)"""
+        if self.total_price and self.check_in and self.check_out:
+            nights = (self.check_out - self.check_in).days
+            if nights > 0:
+                return round(self.total_price / nights, 2)
+        return self.room.price
+
 class Payment(models.Model):
     PAYMENT_METHODS = (
         ('cash', 'Gotówka'),
@@ -133,21 +143,27 @@ def compute_reservation_price(reservation):
     start_date = reservation.check_in
     end_date = reservation.check_out
     
-    total_price = 0
+    total_price = Decimal('0.00')
     current_date = start_date
     
+    print(f"DEBUG: Obliczanie ceny dla pokoju {room.number} ({room.get_room_type_display()}) od {start_date} do {end_date}")
+
     while current_date < end_date:
         day_price = room.price
         # Sprawdzamy sezony dla konkretnego dnia
         active_seasons = Season.objects.filter(start_date__lte=current_date, end_date__gte=current_date)
         
-        multiplier = 1.0
+        multiplier = Decimal('1.0')
         for season in active_seasons:
             season_price = SeasonPrice.objects.filter(season=season, room_type=room.room_type).first()
             if season_price:
-                multiplier = max(multiplier, float(season_price.price_multiplier))
+                if season_price.price_multiplier > multiplier:
+                    multiplier = season_price.price_multiplier
+                    print(f"DEBUG: Dzień {current_date} wpada w sezon '{season.name}'. Mnożnik: {multiplier}")
+            else:
+                print(f"DEBUG: Dzień {current_date} jest w sezonie '{season.name}', ale brak zdefiniowanej ceny (SeasonPrice) dla typu {room.room_type}.")
         
-        total_price += float(day_price) * multiplier
+        total_price += day_price * multiplier
         current_date += timedelta(days=1)
         
     return round(total_price, 2)

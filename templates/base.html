@@ -17,6 +17,11 @@
         .main-content {
             min-height: calc(100vh - 56px);
         }
+        /* Fix: Menu rozwijane nad treścią, a nie rozsuwające ją */
+        .dropdown-menu {
+            position: absolute !important;
+            z-index: 1050;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -76,21 +81,12 @@
                                 <a class="nav-link" href="{% url 'employee:reservations' %}">Rezerwacje</a>
                             </li>
                             <li class="nav-item">
-                            <li class="nav-item">
                                 <a class="nav-link" href="{% url 'employee:rooms' %}">Pokoje</a>
                             </li>
-                            {% if user.is_superuser %}
-                            <li class="nav-item">
-                                <a class="nav-link" href="{% url 'employee:pricing' %}">Cenniki i Sezony</a>
-                            </li>
-                            {% else %}
-                                {% if user.employee_profile %}
-                                    {% if user.employee_profile.role == 'manager' or user.employee_profile.role == 'admin' %}
-                                        <li class="nav-item">
-                                            <a class="nav-link" href="{% url 'employee:pricing' %}">Cenniki i Sezony</a>
-                                        </li>
-                                    {% endif %}
-                                {% endif %}
+                            {% if user.employee_profile.role == 'manager' or user.employee_profile.role == 'admin' %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{% url 'employee:pricing' %}">Cenniki i Sezony</a>
+                                </li>
                             {% endif %}
                         {% endif %}
                     {% endif %}
@@ -101,7 +97,7 @@
                             <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
                                 <i class="bi bi-person-circle"></i> {{ user.get_full_name|default:user.username }}
                             </a>
-                            <ul class="dropdown-menu">
+                            <ul class="dropdown-menu dropdown-menu-end">
                                 {% if user.is_superuser %}
                                     <li><a class="dropdown-item" href="/admin/" target="_blank">
                                         <i class="bi bi-gear"></i> Panel Administracyjny
@@ -149,4 +145,3 @@
     {% block extra_js %}{% endblock %}
 </body>
 </html>
-
