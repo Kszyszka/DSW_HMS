@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 ('is_resolved', models.BooleanField(default=False)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('reported_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='core.guest')),
+                ('reported_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='core.guestprofile')),
                 ('room', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='issues', to='core.room')),
             ],
             options={

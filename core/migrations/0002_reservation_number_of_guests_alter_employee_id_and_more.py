@@ -17,12 +17,12 @@ class Migration(migrations.Migration):
             field=models.IntegerField(default=1, validators=[django.core.validators.MinValueValidator(1)]),
         ),
         migrations.AlterField(
-            model_name='employee',
+            model_name='employeeprofile',
             name='id',
             field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
         ),
         migrations.AlterField(
-            model_name='guest',
+            model_name='guestprofile',
             name='id',
             field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
         ),

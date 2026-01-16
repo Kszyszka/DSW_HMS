@@ -1,4 +1,4 @@
-from django.urls import path, include
+from django.urls import path
 from . import views
 
 urlpatterns = [
@@ -15,7 +15,5 @@ urlpatterns = [
     # PDF
     path('invoice/<int:pk>/pdf/', views.reservation_invoice_pdf, name='reservation_invoice_pdf'),
     
-    # Import ścieżek dla pod-modułów
-    path('guest/', include('core.guest_urls')),
-    path('employee/', include('core.employee_urls')),
+    # Uwaga: Import ścieżek dla pod-modułów jest w config/urls.py, aby uniknąć duplikacji namespace'ów
 ]
