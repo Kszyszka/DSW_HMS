@@ -17,7 +17,7 @@
                         <select class="form-select" id="guest_id" name="guest_id">
                             <option value="">Utwórz nowego gościa poniżej</option>
                             {% for g in guests %}
-                            <option value="{{ g.id }}" data-name="{{ g.name }}" data-surname="{{ g.surname }}" data-email="{{ g.email }}" data-phone="{{ g.phone }}">{{ g.name }} {{ g.surname }} — {{ g.email }}</option>
+                            <option value="{{ g.id }}" data-name="{{ g.user.first_name }}" data-surname="{{ g.user.last_name }}" data-email="{{ g.user.email }}" data-phone="{{ g.phone_number }}">{{ g.user.first_name }} {{ g.user.last_name }} — {{ g.user.email }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -159,19 +159,28 @@
     const checkOutInput = document.getElementById('check_out_date');
 
     function datesValid(){
-        return checkInInput.value && checkOutInput.value && (checkInInput.value <= checkOutInput.value);
+        return checkInInput.value && checkOutInput.value && (checkInInput.value < checkOutInput.value);
     }
 
     async function fetchRoomsForDates(){
+        // Jeśli daty nie są pełne/poprawne, nie pytaj API, tylko filtruj lokalnie to co jest
         if (!datesValid()) return;
+        
+        roomSelect.innerHTML = '<option value="">Sprawdzam dostępność...</option>';
+        roomSelect.disabled = true;
+        
         const guests = parseInt(numberInput.value || '1');
         const params = new URLSearchParams({
             check_in_date: checkInInput.value,
             check_out_date: checkOutInput.value,
             number_of_guests: guests
         });
+        
         const res = await fetch(`/api/rooms-availability/?${params.toString()}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+            roomSelect.disabled = false;
+            return;
+        }
         const data = await res.json();
 
         roomSelect.innerHTML = '';
@@ -179,10 +188,12 @@
         placeholder.value = '';
         placeholder.textContent = 'Wybierz pokój';
         roomSelect.appendChild(placeholder);
+        roomSelect.disabled = false;
 
         let any = false;
 
-        if ((!data.available_by_date || data.available_by_date.length === 0)){
+        // POPRAWKA: Używamy poprawnej nazwy pola z API
+        if ((!data.available_now || data.available_now.length === 0) && (!data.available_later || data.available_later.length === 0)){
             if (data.nearest_available_start){
                 noRoomsAlert.textContent = `Brak wolnych pokoi w danym terminie, najbliższy dostępny termin to ${data.nearest_available_start}`;
             } else {
@@ -230,8 +241,14 @@
     }
 
     if (checkInInput && checkOutInput){
-        checkInInput.addEventListener('change', fetchRoomsForDates);
-        checkOutInput.addEventListener('change', fetchRoomsForDates);
+        checkInInput.addEventListener('change', function() {
+            roomSelect.innerHTML = '<option value="">Wybierz daty...</option>';
+            fetchRoomsForDates();
+        });
+        checkOutInput.addEventListener('change', function() {
+            roomSelect.innerHTML = '<option value="">Wybierz daty...</option>';
+            fetchRoomsForDates();
+        });
     }
 
     numberInput.addEventListener('input', fetchRoomsForDates);

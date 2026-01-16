@@ -1,83 +1,179 @@
-{% extends 'base.html' %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rezerwacja Pobytu - Hotel XYZ</title>
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body { display: flex; flex-direction: column; min-height: 100vh; background-color: #f8f9fa; margin: 0; }
+        .hero-bg {
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            flex: 1;
+            width: 100%;
+            padding-top: 100px; /* Miejsce na navbar */
+            padding-bottom: 80px;
+            display: flex;
+            flex-direction: column;
+        }
+        .navbar { background-color: rgba(0, 0, 0, 0.8) !important; }
+        .card-glass {
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+        .form-control, .form-select, .input-group-text {
+            background-color: rgba(255, 255, 255, 0.5);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+        .form-control:focus, .form-select:focus {
+            background-color: #fff;
+            box-shadow: none;
+            border-color: #000;
+        }
+        footer { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 1000; }
+    </style>
+</head>
+<body>
 
-{% block title %}Nowa Rezerwacja - HMS{% endblock %}
+<!-- Nawigacja (spójna z Home) -->
+<nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="{% url 'home' %}">HOTEL XYZ</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto align-items-center">
+                {% if user.is_authenticated %}
+                    <li class="nav-item"><a class="nav-link" href="{% url 'logout' %}">Wyloguj</a></li>
+                {% else %}
+                    <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">Zaloguj</a></li>
+                    <li class="nav-item"><a class="nav-link btn btn-outline-light ms-2 px-3" href="{% url 'register' %}">Zarejestruj</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</nav>
 
-{% block content %}
-<div class="row mt-4">
-    <div class="col-md-8 offset-md-2">
-        <h2><i class="bi bi-plus-circle"></i> Nowa Rezerwacja (bez logowania)</h2>
-        <hr>
-        <div class="card">
-            <div class="card-body">
+<div class="hero-bg">
+    <div class="container w-100 my-auto">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card card-glass shadow-lg rounded-4 overflow-hidden">
+            <div class="card-header p-4 border-0 bg-transparent">
+                <h3 class="mb-0 fw-bold text-dark"><i class="bi bi-calendar-check me-2"></i>Zarezerwuj swój pobyt</h3>
+                <p class="mb-0 text-muted">Wypełnij formularz, aby sprawdzić dostępność i zarezerwować pokój.</p>
+            </div>
+            <div class="card-body p-4 pt-0">
                 <form method="post">
                     {% csrf_token %}
 
-                    <h5>Dane gościa</h5>
+                    <h5 class="text-dark mb-3 border-bottom pb-2"><i class="bi bi-person-lines-fill me-2"></i>Dane gościa</h5>
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Imię</label>
-                            <input type="text" name="name" class="form-control" required>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                <input type="text" name="name" class="form-control" placeholder="Np. Jan" required>
+                            </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Nazwisko</label>
-                            <input type="text" name="surname" class="form-control" required>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                <input type="text" name="surname" class="form-control" placeholder="Np. Kowalski" required>
+                            </div>
                         </div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">E-mail</label>
-                            <input type="email" name="email" class="form-control" required>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                                <input type="email" name="email" class="form-control" placeholder="jan@example.com" required>
+                            </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Telefon</label>
-                            <input type="text" name="phone" class="form-control">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-telephone"></i></span>
+                                <input type="text" name="phone" class="form-control" placeholder="+48 123 456 789">
+                            </div>
                         </div>
                     </div>
 
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" value="on" id="create_account" name="create_account">
-                        <label class="form-check-label" for="create_account">
-                            Chcę założyć konto
+                    <div class="form-check form-switch mb-3 ps-5 py-2 rounded" style="background-color: rgba(255,255,255,0.5);">
+                        <input class="form-check-input" type="checkbox" value="on" id="create_account" name="create_account" style="margin-left: -2.5em;">
+                        <label class="form-check-label fw-bold ms-2" for="create_account">
+                            Chcę przy okazji założyć konto w serwisie
                         </label>
                     </div>
 
                     <div id="account_fields" style="display:none;">
                         <div class="mb-3">
                             <label class="form-label">Nazwa użytkownika (opcjonalnie)</label>
-                            <input type="text" name="username" class="form-control" placeholder="Jeśli puste użyty zostanie e-mail">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-person-badge"></i></span>
+                                <input type="text" name="username" class="form-control" placeholder="Jeśli puste użyty zostanie e-mail">
+                            </div>
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Hasło</label>
-                                <input type="password" name="password" class="form-control">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                    <input type="password" name="password" class="form-control">
+                                </div>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Powtórz hasło</label>
-                                <input type="password" name="password2" class="form-control">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
+                                    <input type="password" name="password2" class="form-control">
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <hr>
+                    <hr class="my-4">
 
-                    <h5>Rezerwacja</h5>
+                    <h5 class="text-dark mb-3 border-bottom pb-2"><i class="bi bi-calendar-range me-2"></i>Szczegóły pobytu</h5>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="check_in_date" class="form-label">Data zameldowania</label>
-                            <input type="date" class="form-control" id="check_in_date" name="check_in_date" required>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-calendar-event"></i></span>
+                                <input type="date" class="form-control" id="check_in_date" name="check_in_date" required>
+                            </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="check_out_date" class="form-label">Data wymeldowania</label>
-                            <input type="date" class="form-control" id="check_out_date" name="check_out_date" required>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-calendar-check"></i></span>
+                                <input type="date" class="form-control" id="check_out_date" name="check_out_date" required>
+                            </div>
                         </div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Liczba gości</label>
-                            <input type="number" min="1" max="10" name="number_of_guests" id="number_of_guests" class="form-control" value="1" required>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-people"></i></span>
+                                <input type="number" min="1" max="10" name="number_of_guests" id="number_of_guests" class="form-control" value="1" required>
+                            </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="room_id" class="form-label">Pokój</label>
@@ -106,15 +202,15 @@
 
                     <div class="mb-3">
                         <label for="notes" class="form-label">Uwagi (opcjonalnie)</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                        <textarea class="form-control" id="notes" name="notes" rows="3" placeholder="Np. łóżeczko dla dziecka, późny przyjazd..."></textarea>
                     </div>
 
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-circle"></i> Utwórz Rezerwację
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-dark btn-lg shadow-sm rounded-pill">
+                            Zatwierdź rezerwację
                         </button>
-                        <a href="{% url 'home' %}" class="btn btn-outline-secondary">
-                            <i class="bi bi-x-circle"></i> Anuluj
+                        <a href="{% url 'home' %}" class="btn btn-link text-decoration-none text-white">
+                            Anuluj
                         </a>
                     </div>
                 </form>
@@ -122,8 +218,21 @@
         </div>
     </div>
 </div>
+</div>
 
-{% block extra_js %}
+<!-- Stopka -->
+<footer class="bg-dark text-white-50 py-3 text-center mt-auto">
+    <div class="container">
+        <small>&copy; 2026 Hotel XYZ. Wszelkie prawa zastrzeżone.</small>
+        {% if user.is_authenticated and user.employee_profile %}
+            <div class="mt-2">
+                <a href="{% url 'employee:dashboard' %}" class="text-decoration-none text-secondary" style="font-size: 0.8rem;">Wejście do systemu HMS</a>
+            </div>
+        {% endif %}
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     // Pokazywanie pól konta
     const createCheckbox = document.getElementById('create_account');
@@ -214,7 +323,8 @@
         let any = false;
 
         // Najpierw sprawdź czy w ogóle są jakieś pokoje dostępne w zadanym terminie
-        if ((!data.available_by_date || data.available_by_date.length === 0)){
+        // POPRAWKA: Sprawdzamy available_now, bo to zwraca API
+        if ((!data.available_now || data.available_now.length === 0) && (!data.available_later || data.available_later.length === 0)){
             // brak dostępności w całym zakresie dni
             if (data.nearest_available_start){
                 noRoomsAlert.textContent = `Brak wolnych pokoi w danym terminie, najbliższy dostępny termin to ${data.nearest_available_start}`;
@@ -272,5 +382,5 @@
     // initial action: run filterRooms() to show something even before selecting dates
     filterRooms();
 </script>
-{% endblock %}
-{% endblock %}
+</body>
+</html>

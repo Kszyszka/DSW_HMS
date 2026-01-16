@@ -1,72 +1,96 @@
-{% extends 'base.html' %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moje Rezerwacje - Hotel XYZ</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body { display: flex; flex-direction: column; min-height: 100vh; background-color: #f8f9fa; margin: 0; }
+        .hero-bg {
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            flex: 1;
+            width: 100%;
+            padding-top: 100px;
+            padding-bottom: 80px;
+            display: flex;
+            flex-direction: column;
+        }
+        .navbar { background-color: rgba(0, 0, 0, 0.8) !important; }
+        .card-glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+        footer { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 1000; }
+    </style>
+</head>
+<body>
 
-{% block title %}Moje Rezerwacje - HMS{% endblock %}
-
-{% block content %}
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="d-flex justify-content-between align-items-center">
-            <h2><i class="bi bi-calendar-check"></i> Moje Rezerwacje</h2>
-            <a href="{% url 'guest:create_reservation' %}" class="btn btn-primary">
-                <i class="bi bi-plus-circle"></i> Nowa Rezerwacja
-            </a>
+<nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="{% url 'home' %}">HOTEL XYZ</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto align-items-center">
+                <li class="nav-item"><a class="nav-link active" href="{% url 'guest:dashboard' %}">Panel Gościa</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'logout' %}">Wyloguj</a></li>
+            </ul>
         </div>
-        <hr>
     </div>
-</div>
+</nav>
 
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-body">
-                {% if reservations %}
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Pokój</th>
-                                    <th>Typ</th>
-                                    <th>Zameldowanie</th>
-                                    <th>Wymeldowanie</th>
-                                    <th>Cena</th>
-                                    <th>Status</th>
-                                    <th>Akcje</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for reservation in reservations %}
-                                <tr>
-                                    <td>#{{ reservation.id }}</td>
-                                    <td>Pokój {{ reservation.room.number }}</td>
-                                    <td>{{ reservation.room.get_room_type_display }}</td>
-                                    <td>{{ reservation.check_in_date }}</td>
-                                    <td>{{ reservation.check_out_date }}</td>
-                                    <td>{{ reservation.price_total }} PLN</td>
-                                    <td>
-                                        <span class="badge bg-{% if reservation.status == 'confirmed' %}success{% elif reservation.status == 'pending' %}warning{% elif reservation.status == 'checked_in' %}info{% else %}secondary{% endif %}">
-                                            {{ reservation.get_status_display }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <a href="{% url 'guest:reservation_detail' reservation.id %}" class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-eye"></i> Szczegóły
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+<div class="hero-bg">
+    <div class="container w-100 my-auto">
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <div class="card card-glass shadow-lg rounded-4 overflow-hidden">
+                    <div class="card-header p-4 border-0 bg-transparent d-flex justify-content-between align-items-center">
+                        <div>
+                            <h3 class="mb-0 fw-bold text-dark"><i class="bi bi-list-check me-2"></i>Historia Rezerwacji</h3>
+                            <p class="mb-0 text-muted">Pełna lista Twoich pobytów</p>
+                        </div>
+                        <a href="{% url 'guest:create_reservation' %}" class="btn btn-dark rounded-pill shadow-sm">
+                            <i class="bi bi-plus-lg"></i> Nowa rezerwacja
+                        </a>
                     </div>
-                {% else %}
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> Nie masz jeszcze żadnych rezerwacji.
-                        <a href="{% url 'guest:create_reservation' %}" class="alert-link">Utwórz pierwszą rezerwację</a>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush">
+                            {% for res in reservations %}
+                            <a href="{% url 'guest:reservation_detail' res.pk %}" class="list-group-item list-group-item-action p-4 d-flex justify-content-between align-items-center bg-transparent border-bottom border-light">
+                                <div>
+                                    <h5 class="mb-1 fw-bold">Pokój {{ res.room.number }} <small class="text-muted">({{ res.room.get_room_type_display }})</small></h5>
+                                    <p class="mb-1"><i class="bi bi-calendar-event"></i> {{ res.check_in }} - {{ res.check_out }}</p>
+                                    <small class="text-muted">Złożono: {{ res.created_at|date:"d.m.Y H:i" }}</small>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-secondary rounded-pill mb-2">{{ res.get_status_display }}</span><br>
+                                    <span class="fw-bold">{{ res.total_price }} PLN</span>
+                                </div>
+                            </a>
+                            {% empty %}
+                            <div class="p-5 text-center text-muted">
+                                <h4>Brak rezerwacji</h4>
+                                <p>Nie masz jeszcze żadnych rezerwacji w historii.</p>
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
-                {% endif %}
+                </div>
             </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
+<footer class="bg-dark text-white-50 py-3 text-center mt-auto"><div class="container"><small>&copy; 2026 Hotel XYZ.</small></div></footer>
+</body>
+</html>
