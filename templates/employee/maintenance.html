@@ -94,6 +94,44 @@
                                             <i class="bi bi-stars"></i> Posprzątane
                                         </button>
                                     </form>
+                                    
+                                    <!-- Przycisk zgłaszania usterki -->
+                                    <button type="button" class="btn btn-warning btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#reportIssueModal{{ room.id }}">
+                                        <i class="bi bi-tools"></i> Zgłoś usterkę
+                                    </button>
+
+                                    <!-- Modal Zgłaszania Problemu -->
+                                    <div class="modal fade" id="reportIssueModal{{ room.id }}" tabindex="-1" aria-hidden="true">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <form method="POST">
+                                                    {% csrf_token %}
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Zgłoś problem - Pokój {{ room.number }}</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <input type="hidden" name="room_id" value="{{ room.id }}">
+                                                        <input type="hidden" name="action" value="report_issue">
+                                                        
+                                                        <div class="mb-3">
+                                                            <label class="form-label">Tytuł problemu:</label>
+                                                            <input type="text" name="issue_title" class="form-control" required placeholder="Np. Brak ręczników, uszkodzone drzwi">
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label class="form-label">Szczegółowy opis:</label>
+                                                            <textarea name="issue_description" class="form-control" rows="3" required></textarea>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                                                        <button type="submit" class="btn btn-danger">Wyślij zgłoszenie</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                             {% empty %}

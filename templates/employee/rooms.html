@@ -46,19 +46,46 @@
                 {% endif %}
                 
                 <hr>
-                <form method="post" class="mt-2">
+                <form method="post" class="mt-2" id="room-form-{{ room.id }}">
                     {% csrf_token %}
                     <input type="hidden" name="room_id" value="{{ room.id }}">
                     <div class="input-group input-group-sm">
-                        <select name="status" class="form-select">
+                        <select name="status" class="form-select" id="status-select-{{ room.id }}">
                             <option value="available" {% if room.status == 'available' %}selected{% endif %}>Wolny</option>
                             <option value="occupied" {% if room.status == 'occupied' %}selected{% endif %}>Zajęty</option>
                             <option value="dirty" {% if room.status == 'dirty' %}selected{% endif %}>Do sprzątania</option>
                             <option value="maintenance" {% if room.status == 'maintenance' %}selected{% endif %}>W naprawie</option>
                         </select>
-                        <button class="btn btn-outline-secondary" type="submit">Zmień</button>
+                        <button class="btn btn-outline-secondary" type="button" onclick="checkStatusAndSubmit({{ room.id }})">Zmień</button>
                     </div>
                 </form>
+                
+                <!-- Modal do zgłaszania usterki -->
+                <div class="modal fade" id="maintenanceModal{{ room.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <form method="POST">
+                                {% csrf_token %}
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Zgłoś usterkę - Pokój {{ room.number }}</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <input type="hidden" name="room_id" value="{{ room.id }}">
+                                    <input type="hidden" name="status" value="maintenance">
+                                    <div class="mb-3">
+                                        <label class="form-label">Opis usterki (Wymagane):</label>
+                                        <textarea name="maintenance_description" class="form-control" rows="3" required placeholder="Np. Cieknący kran, zepsuta klimatyzacja..."></textarea>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                                    <button type="submit" class="btn btn-danger">Zmień status na "W naprawie"</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="card-footer bg-transparent border-top-0">
                 <!-- Tu można dodać przycisk edycji -->
@@ -69,4 +96,17 @@
     <div class="col-12"><p>Brak pokoi w systemie.</p></div>
     {% endfor %}
 </div>
+
+<script>
+function checkStatusAndSubmit(roomId) {
+    var select = document.getElementById('status-select-' + roomId);
+    var status = select.value;
+    if (status === 'maintenance') {
+        var modal = new bootstrap.Modal(document.getElementById('maintenanceModal' + roomId));
+        modal.show();
+    } else {
+        document.getElementById('room-form-' + roomId).submit();
+    }
+}
+</script>
 {% endblock %}

@@ -142,6 +142,16 @@ def employee_rooms(request):
         
         if room_id and new_status:
             room = get_object_or_404(Room, pk=room_id)
+            
+            # Obsługa opisu usterki przy zmianie statusu na 'maintenance' przez recepcję
+            if new_status == 'maintenance':
+                description = request.POST.get('maintenance_description')
+                if not description:
+                    messages.error(request, "Wymagany jest opis usterki przy zmianie statusu na 'W naprawie'.")
+                    return redirect('employee:rooms')
+                timestamp = timezone.now().strftime('%Y-%m-%d %H:%M')
+                room.notes = f"{room.notes}\n[RECEPCJA {timestamp}]: {description}".strip()
+            
             room.status = new_status
             room.save()
             messages.success(request, f"Status pokoju {room.number} zmieniony na {room.get_status_display()}.")
@@ -764,8 +774,12 @@ def employee_housekeeping(request):
         elif action == 'report_issue':
             title = request.POST.get('issue_title')
             desc = request.POST.get('issue_description')
+            if not title or not desc:
+                messages.error(request, "Tytuł i opis usterki są wymagane.")
+                return redirect('employee:housekeeping')
             room.status = 'maintenance'
-            room.notes = f"{room.notes}\n[USTERKA] {title}: {desc}".strip()
+            timestamp = timezone.now().strftime('%Y-%m-%d %H:%M')
+            room.notes = f"{room.notes}\n[HK {timestamp}] {title}: {desc}".strip()
             room.save()
             messages.warning(request, f"Zgłoszono usterkę w pokoju {room.number}. Status: W NAPRAWIE.")
             
@@ -793,6 +807,19 @@ def employee_maintenance(request):
             room.status = 'available'
             room.save()
             messages.success(request, f"Pokój {room.number} oznaczony jako POSPRZĄTANY (Wolny).")
+        
+        elif action == 'report_issue':
+            # Technik (lub osoba sprzątająca w tym widoku) zgłasza problem
+            title = request.POST.get('issue_title')
+            desc = request.POST.get('issue_description')
+            if not title or not desc:
+                messages.error(request, "Tytuł i opis usterki są wymagane.")
+                return redirect('employee:maintenance')
+            room.status = 'maintenance'
+            timestamp = timezone.now().strftime('%Y-%m-%d %H:%M')
+            room.notes = f"{room.notes}\n[TECH {timestamp}] {title}: {desc}".strip()
+            room.save()
+            messages.warning(request, f"Zgłoszono usterkę w pokoju {room.number}. Status: W NAPRAWIE.")
             
         return redirect('employee:maintenance')
 
