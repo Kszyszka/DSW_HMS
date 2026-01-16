@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block title %}Szczegóły Rezerwacji - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <h2><i class="bi bi-calendar-check"></i> Szczegóły Rezerwacji #{{ reservation.id }}</h2>
+        <hr>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Informacje o Rezerwacji</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr>
+                        <th>Status:</th>
+                        <td>
+                            <span class="badge bg-{% if reservation.status == 'confirmed' %}success{% elif reservation.status == 'pending' %}warning{% else %}secondary{% endif %}">
+                                {{ reservation.get_status_display }}
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Pokój:</th>
+                        <td>Pokój {{ reservation.room.number }} ({{ reservation.room.get_room_type_display }})</td>
+                    </tr>
+                    <tr>
+                        <th>Zameldowanie:</th>
+                        <td>{{ reservation.check_in_date }}</td>
+                    </tr>
+                    <tr>
+                        <th>Wymeldowanie:</th>
+                        <td>{{ reservation.check_out_date }}</td>
+                    </tr>
+                    <tr>
+                        <th>Cena całkowita:</th>
+                        <td><strong>{{ reservation.price_total }} PLN</strong></td>
+                    </tr>
+                    {% if reservation.notes %}
+                    <tr>
+                        <th>Uwagi:</th>
+                        <td>{{ reservation.notes }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5>Płatności</h5>
+            </div>
+            <div class="card-body">
+                {% if payments %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Kwota</th>
+                                    <th>Metoda</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for payment in payments %}
+                                <tr>
+                                    <td>{{ payment.payment_date }}</td>
+                                    <td>{{ payment.amount }} PLN</td>
+                                    <td>{{ payment.get_payment_method_display }}</td>
+                                    <td>
+                                        <span class="badge bg-{% if payment.payment_status == 'completed' %}success{% elif payment.payment_status == 'pending' %}warning{% else %}danger{% endif %}">
+                                            {{ payment.get_payment_status_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">Brak płatności.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Akcje</h5>
+            </div>
+            <div class="card-body">
+                {% if show_access_pin %}
+                    <div class="alert alert-success mb-3">
+                        <strong>Kod PIN do pokoju:</strong>
+                        <div class="fs-3 mt-2">{{ access_pin }}</div>
+                        <small class="text-muted">Wyświetlany ponieważ rezerwacja została opłacona i jest w zasięgu pre-checkin.</small>
+                    </div>
+                {% elif precheckin_allowed and paid_online %}
+                    <a href="{% url 'pre_checkin' reservation.id %}" class="btn btn-primary w-100 mb-3">Wykonaj Pre-checkin (wygeneruj PIN)</a>
+                {% endif %}
+
+                {% if has_online_pending %}
+                    <a href="{% url 'online_payment_test' reservation.id %}" class="btn btn-warning w-100 mb-3">Spróbuj ponownie płatność online</a>
+                {% endif %}
+
+                {% if not show_access_pin and not precheckin_allowed %}
+                    {% if paid_online %}
+                        <div class="alert alert-info mb-3">Rezerwacja opłacona online. Kod PIN pojawi się 24 godziny przed zameldowaniem.</div>
+                    {% elif has_online_pending %}
+                        <div class="alert alert-info mb-3">Płatność online oczekuje — po opłaceniu kod PIN zostanie wygenerowany 24 godziny przed zameldowaniem.</div>
+                    {% else %}
+                        <div class="alert alert-info mb-3">Kod PIN pojawi się 24 godziny przed zameldowaniem, jeżeli rezerwacja zostanie opłacona online.</div>
+                    {% endif %}
+                {% endif %}
+
+                <a href="{% url 'guest:reservations' %}" class="btn btn-outline-secondary w-100 mb-2">
+                    <i class="bi bi-arrow-left"></i> Powrót do listy
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

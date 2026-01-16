@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block title %}Szczegóły Rezerwacji - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <h2><i class="bi bi-card-list"></i> Rezerwacja #{{ reservation.id }}</h2>
+        <hr>
+        <div class="card">
+            <div class="card-body">
+                <p><strong>Imię i nazwisko:</strong> {{ reservation.guest.name }} {{ reservation.guest.surname }}</p>
+                <p><strong>E-mail:</strong> {{ reservation.guest.email }}</p>
+                <p><strong>Pokój:</strong> Pokój {{ reservation.room.number }} — {{ reservation.room.get_room_type_display }}</p>
+                <p><strong>Liczba gości:</strong> {{ reservation.number_of_guests }}</p>
+                <p><strong>Data zameldowania:</strong> {{ reservation.check_in_date }}</p>
+                <p><strong>Data wymeldowania:</strong> {{ reservation.check_out_date }}</p>
+                <p><strong>Kwota:</strong> {{ reservation.price_total }} PLN</p>
+                <p><strong>Status:</strong> {{ reservation.get_status_display }}</p>
+
+                <hr>
+                <h5>Płatności</h5>
+                {% if payments %}
+                    <ul>
+                        {% for p in payments %}
+                            <li>{{ p.get_payment_method_display }} — {{ p.amount }} PLN — {{ p.get_payment_status_display }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>Brak płatności.</p>
+                {% endif %}
+
+                <hr>
+                {% if show_access_pin %}
+                    <div class="alert alert-success">
+                        <strong>Kod PIN do pokoju:</strong> <span class="fw-bold">{{ access_pin }}</span>
+                        <br><small class="text-muted">PIN wygenerowany automatycznie. Użyj go przy wejściu do pokoju.</small>
+                    </div>
+                {% elif precheckin_allowed and paid_online %}
+                    <div class="alert alert-info">
+                        Pre-checkin dostępny — <a href="{% url 'pre_checkin' reservation.id %}" class="btn btn-sm btn-primary">Wygeneruj kod PIN</a>
+                    </div>
+                {% endif %}
+
+                {% if has_online_pending %}
+                    <div class="mb-3">
+                        <a href="{% url 'online_payment_test' reservation.id %}" class="btn btn-warning">Spróbuj ponownie płatność online</a>
+                    </div>
+                {% endif %}
+
+                {% if not show_access_pin and not precheckin_allowed %}
+                    {% if paid_online %}
+                        <div class="alert alert-info">Rezerwacja opłacona online. Kod PIN pojawi się 24 godziny przed zameldowaniem.</div>
+                    {% elif has_online_pending %}
+                        <div class="alert alert-info">Płatność online oczekuje — po opłaceniu kod PIN zostanie wygenerowany 24 godziny przed zameldowaniem.</div>
+                    {% else %}
+                        <div class="alert alert-info">Kod PIN pojawi się 24 godziny przed zameldowaniem, jeżeli rezerwacja zostanie opłacona online.</div>
+                    {% endif %}
+                {% endif %}
+
+                <hr>
+                <p class="text-muted">Aby ponownie zobaczyć tę stronę, otwórz następujący adres w przeglądarce:</p>
+                <pre>{{ request.scheme }}://{{ request.get_host }}/reservations/{{ reservation.id }}</pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

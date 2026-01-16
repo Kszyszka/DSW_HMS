@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+
+{% block title %}Nowa Rezerwacja - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <h2><i class="bi bi-plus-circle"></i> Nowa Rezerwacja</h2>
+        <hr>
+        
+        <div class="card">
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="room_id" class="form-label">Pokój</label>
+                        <select class="form-select" id="room_id" name="room_id" required>
+                            <option value="">Wybierz pokój</option>
+                            {% for room in available_rooms %}
+                            <option value="{{ room.id }}" data-price="{{ room.price }}" data-capacity="{{ room.capacity }}">
+                                Pokój {{ room.number }} - {{ room.get_room_type_display }} ({{ room.price }} PLN/noc) — pojemność: {{ room.capacity }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="check_in_date" class="form-label">Data zameldowania</label>
+                            <input type="date" class="form-control" id="check_in_date" name="check_in_date" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="check_out_date" class="form-label">Data wymeldowania</label>
+                            <input type="date" class="form-control" id="check_out_date" name="check_out_date" required>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Liczba gości</label>
+                            <input type="number" min="1" max="10" name="number_of_guests" id="number_of_guests" class="form-control" value="1" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Forma płatności</label>
+                            <select class="form-select" name="payment_method" id="payment_method">
+                                <option value="cash">Gotówka</option>
+                                <option value="online">Płatność online (test)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="no_rooms_alert" class="alert alert-danger" style="display:none;">
+                        Brak dostępnych pokoi dla wybranej liczby gości.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Uwagi (opcjonalnie)</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Utwórz Rezerwację
+                        </button>
+                        <a href="{% url 'guest:reservations' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Anuluj
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Ustawienie minimalnej daty na dzisiaj
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('check_in_date').setAttribute('min', today);
+    document.getElementById('check_out_date').setAttribute('min', today);
+    
+    // Walidacja dat
+    document.getElementById('check_in_date').addEventListener('change', function() {
+        const checkIn = this.value;
+        const checkOut = document.getElementById('check_out_date');
+        if (checkIn) {
+            checkOut.setAttribute('min', checkIn);
+        }
+    });
+
+    // Filtruj dostępne pokoje wg pojemności i dat (poprzez API kiedy są wybrane daty)
+    const numberInput = document.getElementById('number_of_guests');
+    const roomSelect = document.getElementById('room_id');
+    const noRoomsAlert = document.getElementById('no_rooms_alert');
+    const submitButton = document.querySelector('button[type="submit"]');
+
+    function filterRooms() {
+        const guests = parseInt(numberInput.value || '1');
+        let any = false;
+        for (let i = 0; i < roomSelect.options.length; i++) {
+            const opt = roomSelect.options[i];
+            if (!opt.value) continue; // skip placeholder
+            const cap = parseInt(opt.dataset.capacity || '0');
+            if (cap >= guests) {
+                opt.hidden = false;
+                opt.disabled = false;
+                any = true;
+            } else {
+                opt.hidden = true;
+                opt.disabled = true;
+            }
+        }
+        noRoomsAlert.style.display = any ? 'none' : 'block';
+        if (!any) submitButton.disabled = true; else submitButton.disabled = false;
+    }
+
+    if (numberInput) {
+        numberInput.addEventListener('input', fetchRoomsForDates);
+    }
+
+    const checkInInput = document.getElementById('check_in_date');
+    const checkOutInput = document.getElementById('check_out_date');
+
+    function datesValid() {
+        return checkInInput.value && checkOutInput.value && (checkInInput.value <= checkOutInput.value);
+    }
+
+    async function fetchRoomsForDates(){
+        // If dates are not valid, fallback to local filter
+        if (!datesValid()){
+            filterRooms();
+            return;
+        }
+        const guests = parseInt(numberInput.value || '1');
+        const params = new URLSearchParams({
+            check_in_date: checkInInput.value,
+            check_out_date: checkOutInput.value,
+            number_of_guests: guests
+        });
+        const res = await fetch(`/api/rooms-availability/?${params.toString()}`);
+        if (!res.ok){
+            // fallback
+            filterRooms();
+            return;
+        }
+        const data = await res.json();
+
+        // rebuild room select
+        roomSelect.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Wybierz pokój';
+        roomSelect.appendChild(placeholder);
+
+        let any = false;
+
+        // Najpierw sprawdź czy w ogóle są jakieś pokoje dostępne w zadanym terminie
+        if ((!data.available_by_date || data.available_by_date.length === 0)){
+            // brak dostępności w całym zakresie dni
+            if (data.nearest_available_start){
+                noRoomsAlert.textContent = `Brak wolnych pokoi w danym terminie, najbliższy dostępny termin to ${data.nearest_available_start}`;
+            } else {
+                noRoomsAlert.textContent = 'Brak wolnych pokoi w danym terminie.';
+            }
+            noRoomsAlert.style.display = 'block';
+            submitButton.disabled = true;
+            return;
+        }
+
+        // Są pokoje w tym terminie, sprawdź teraz walidację ilości gości
+        if (data.capacity_issue){
+            noRoomsAlert.textContent = `Brak dostępnych pokoi dla wybranej liczby gości (${guests}) w tym terminie.`;
+            noRoomsAlert.style.display = 'block';
+            submitButton.disabled = true;
+            return;
+        }
+
+        // Pokaż dostępne pokoje spełniające kryteria
+        if (data.available_now && data.available_now.length){
+            data.available_now.forEach(r=>{
+                const opt = document.createElement('option');
+                opt.value = r.id;
+                opt.dataset.price = r.price;
+                opt.dataset.capacity = r.capacity;
+                opt.textContent = `Pokój ${r.number} - ${r.room_type} (${r.price} PLN/noc)`;
+                roomSelect.appendChild(opt);
+                any = true;
+            });
+        }
+
+        if (data.available_later && data.available_later.length){
+            data.available_later.forEach(r=>{
+                const opt = document.createElement('option');
+                opt.value = r.id;
+                opt.dataset.price = r.price;
+                opt.dataset.capacity = r.capacity;
+                const note = r.occupied_until ? ` — proponowane (obecnie zajęty do ${r.occupied_until})` : ' — proponowane (obecnie zajęty)';
+                opt.textContent = `Pokój ${r.number} - ${r.room_type} (${r.price} PLN/noc) ${note}`;
+                roomSelect.appendChild(opt);
+                any = true;
+            });
+        }
+
+        noRoomsAlert.style.display = any ? 'none' : 'block';
+        submitButton.disabled = !any;
+    }
+
+    if (checkInInput && checkOutInput){
+        checkInInput.addEventListener('change', fetchRoomsForDates);
+        checkOutInput.addEventListener('change', fetchRoomsForDates);
+    }
+
+    // initial action: run filterRooms() to show something even before selecting dates
+    filterRooms();
+</script>
+{% endblock %}
+{% endblock %}
+

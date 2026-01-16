@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}Profil - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <h2><i class="bi bi-person"></i> Mój Profil</h2>
+        <hr>
+        
+        <div class="card">
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="name" class="form-label">Imię</label>
+                            <input type="text" class="form-control" id="name" name="name" value="{{ guest.name }}" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="surname" class="form-label">Nazwisko</label>
+                            <input type="text" class="form-control" id="surname" name="surname" value="{{ guest.surname }}" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">Telefon</label>
+                        <input type="text" class="form-control" id="phone" name="phone" value="{{ guest.phone }}">
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Zapisz Zmiany
+                        </button>
+                        <a href="{% url 'guest:dashboard' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Powrót
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

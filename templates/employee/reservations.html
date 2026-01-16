@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+
+{% block title %}Zarządzanie Rezerwacjami - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <h2><i class="bi bi-calendar-check"></i> Zarządzanie Rezerwacjami</h2>
+        <div class="mb-2">
+            <a href="{% url 'employee:reservation_create' %}" class="btn btn-success btn-sm">
+                <i class="bi bi-plus"></i> Utwórz nową rezerwację
+            </a>
+        </div>
+        <hr>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-4">
+                        <label for="status" class="form-label">Filtruj według statusu</label>
+                        <select class="form-select" id="status" name="status" onchange="this.form.submit()">
+                            <option value="">Wszystkie</option>
+                            <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Oczekujące</option>
+                            <option value="confirmed" {% if status_filter == 'confirmed' %}selected{% endif %}>Potwierdzone</option>
+                            <option value="checked_in" {% if status_filter == 'checked_in' %}selected{% endif %}>Zameldowane</option>
+                            <option value="checked_out" {% if status_filter == 'checked_out' %}selected{% endif %}>Wymeldowane</option>
+                            <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Anulowane</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                {% if reservations_data %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Gość</th>
+                                    <th>Pokój</th>
+                                    <th>Zameldowanie</th>
+                                    <th>Wymeldowanie</th>
+                                    <th>Cena</th>
+                                    <th>Płatność</th>
+                                    <th>Status</th>
+                                    <th>Akcje</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in reservations_data %}
+                                {% with reservation=item.reservation %}
+                                <tr>
+                                    <td>#{{ reservation.id }}</td>
+                                    <td>{{ reservation.guest.name }} {{ reservation.guest.surname }}</td>
+                                    <td>Pokój {{ reservation.room.number }}</td>
+                                    <td>{{ reservation.check_in_date }}</td>
+                                    <td>{{ reservation.check_out_date }}</td>
+                                    <td>{{ reservation.price_total|floatformat:2 }} PLN</td>
+                                    <td>
+                                        {% if item.is_fully_paid %}
+                                            <span class="badge bg-success" title="Zapłacono: {{ item.total_paid|floatformat:2 }} PLN">
+                                                <i class="bi bi-check-circle"></i> Opłacone
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-warning" title="Zapłacono: {{ item.total_paid|floatformat:2 }} PLN, Brakuje: {{ item.remaining|floatformat:2 }} PLN">
+                                                <i class="bi bi-exclamation-triangle"></i> Brakuje {{ item.remaining|floatformat:2 }} PLN
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if reservation.status == 'confirmed' %}success{% elif reservation.status == 'pending' %}warning{% elif reservation.status == 'checked_in' %}info{% else %}secondary{% endif %}">
+                                            {{ reservation.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a href="{% url 'employee:reservation_detail' reservation.id %}" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            {% if reservation.status == 'pending' %}
+                                            <form method="post" style="display: inline;">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="action" value="confirm">
+                                                <input type="hidden" name="reservation_id" value="{{ reservation.id }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-success" onclick="return confirm('Potwierdzić rezerwację?');">
+                                                    <i class="bi bi-check"></i>
+                                                </button>
+                                            </form>
+                                            <form method="post" style="display: inline;">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="action" value="cancel">
+                                                <input type="hidden" name="reservation_id" value="{{ reservation.id }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Anulować rezerwację?');">
+                                                    <i class="bi bi-x"></i>
+                                                </button>
+                                            </form>
+                                            {% elif reservation.status == 'confirmed' %}
+                                            {% if item.is_fully_paid %}
+                                            <form method="post" style="display: inline;">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="action" value="check_in">
+                                                <input type="hidden" name="reservation_id" value="{{ reservation.id }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-info" onclick="return confirm('Zameldować gościa?');">
+                                                    <i class="bi bi-box-arrow-in-right"></i>
+                                                </button>
+                                            </form>
+                                            {% else %}
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Rezerwacja musi być w pełni opłacona">
+                                                <i class="bi bi-lock"></i>
+                                            </button>
+                                            {% endif %}
+                                            {% elif reservation.status == 'checked_in' %}
+                                            <form method="post" style="display: inline;">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="action" value="check_out">
+                                                <input type="hidden" name="reservation_id" value="{{ reservation.id }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-success" onclick="return confirm('Wymeldować gościa?');">
+                                                    <i class="bi bi-box-arrow-right"></i>
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endwith %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Brak rezerwacji.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

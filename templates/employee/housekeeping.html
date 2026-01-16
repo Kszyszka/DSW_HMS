@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block title %}Do posprzątania - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <h2><i class="bi bi-broom"></i> Pokoje do posprzątania</h2>
+        <hr>
+
+        <h4>Pokoje z zgłoszonymi usterkami</h4>
+        {% if rooms_with_issues %}
+            <div class="list-group mb-4">
+                {% for rdata in rooms_with_issues %}
+                {% with room=rdata.room issues=rdata.unresolved_issues %}
+                <div class="list-group-item d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5>Pokój {{ room.number }} — {{ room.get_room_type_display }}</h5>
+                        <p class="mb-1">Pojemność: {{ room.capacity }}, Uwagi: {{ room.notes|default:'-' }}</p>
+                        <div class="mb-2">
+                            <strong>Zgłoszone usterki:</strong>
+                            <ul>
+                                {% for issue in issues %}
+                                    <li>
+                                        <strong>{{ issue.title }}</strong> — {{ issue.description }}
+                                        <form method="post" class="d-inline ms-2">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="resolve_issue">
+                                            <input type="hidden" name="issue_id" value="{{ issue.id }}">
+                                            <button class="btn btn-sm btn-success">Naprawione</button>
+                                        </form>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-outline-warning btn-sm report-toggle" data-room-id="{{ room.id }}">Zgłoś usterkę</button>
+                        <form method="post" class="mt-2 report-form" id="report-form-{{ room.id }}" style="display:none;">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="report_issue">
+                            <input type="hidden" name="room_id" value="{{ room.id }}">
+                            <div class="mb-2">
+                                <input class="form-control form-control-sm" type="text" name="issue_title" placeholder="Krótki tytuł usterki" required>
+                            </div>
+                            <div class="mb-2">
+                                <textarea class="form-control form-control-sm" name="issue_description" placeholder="Szczegóły/uwagi (trafią do notatek)" rows="2"></textarea>
+                            </div>
+                            <div class="d-grid">
+                                <button class="btn btn-warning btn-sm">Wyślij zgłoszenie</button>
+                            </div>
+                        </form>
+                        {% if room.status != 'maintenance' %}
+                        <form method="post" class="mt-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="mark_clean">
+                            <input type="hidden" name="room_id" value="{{ room.id }}">
+                            <button class="btn btn-primary btn-sm">Oznacz jako posprzątany</button>
+                        </form>
+                        {% else %}
+                            <div class="mt-2"><span class="badge bg-secondary">W konserwacji</span></div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-info mb-4">Brak zgłoszonych usterek.</div>
+        {% endif %}
+
+        <h4>Pokoje do posprzątania</h4>
+        {% if rooms_without_issues %}
+            <div class="list-group">
+                {% for rdata in rooms_without_issues %}
+                {% with room=rdata.room %}
+                <div class="list-group-item d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5>Pokój {{ room.number }} — {{ room.get_room_type_display }}</h5>
+                        <p class="mb-1">Pojemność: {{ room.capacity }}, Uwagi: {{ room.notes|default:'-' }}</p>
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-outline-warning btn-sm report-toggle" data-room-id="{{ room.id }}">Zgłoś usterkę</button>
+                        <form method="post" class="mt-2 report-form" id="report-form-{{ room.id }}" style="display:none;">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="report_issue">
+                            <input type="hidden" name="room_id" value="{{ room.id }}">
+                            <div class="mb-2">
+                                <input class="form-control form-control-sm" type="text" name="issue_title" placeholder="Krótki tytuł usterki" required>
+                            </div>
+                            <div class="mb-2">
+                                <textarea class="form-control form-control-sm" name="issue_description" placeholder="Szczegóły/uwagi (trafią do notatek)" rows="2"></textarea>
+                            </div>
+                            <div class="d-grid">
+                                <button class="btn btn-warning btn-sm">Wyślij zgłoszenie</button>
+                            </div>
+                        </form>
+                        <form method="post" class="mt-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="mark_clean">
+                            <input type="hidden" name="room_id" value="{{ room.id }}">
+                            <button class="btn btn-primary btn-sm">Oznacz jako posprzątany</button>
+                        </form>
+                    </div>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-info">Brak pokoi do posprzątania.</div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    // Toggle inline report-issue forms
+    document.addEventListener('DOMContentLoaded', function(){
+        document.querySelectorAll('.report-toggle').forEach(btn=>{
+            btn.addEventListener('click', function(){
+                const id = this.dataset.roomId;
+                const f = document.getElementById('report-form-' + id);
+                if (f.style.display === 'none' || f.style.display === '') {
+                    f.style.display = 'block';
+                } else {
+                    f.style.display = 'none';
+                }
+            });
+        });
+    });
+</script>
+
+{% endblock %}

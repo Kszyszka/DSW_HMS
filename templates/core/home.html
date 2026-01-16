@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block title %}Strona Główna - HMS{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-body text-center">
+                <h1 class="display-4 mb-4">
+                    <i class="bi bi-building text-primary"></i>
+                    Hotel Management System
+                </h1>
+                <p class="lead">System zarządzania hotelem dla gości i pracowników</p>
+                
+                {% if not user.is_authenticated %}
+                    <div class="mt-4">
+                        <div class="row g-3 justify-content-center">
+                            <div class="col-md-3">
+                                <a href="{% url 'login' %}" class="btn btn-primary btn-lg w-100">
+                                    <i class="bi bi-box-arrow-in-right"></i> Zaloguj się
+                                </a>
+                            </div>
+                            <div class="col-md-3">
+                                <a href="{% url 'guest:register' %}" class="btn btn-outline-primary btn-lg w-100">
+                                    <i class="bi bi-person-plus"></i> Zarejestruj
+                                </a>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="{% url 'guest:create_reservation_public' %}" class="btn btn-success btn-lg w-100">
+                                    <i class="bi bi-calendar-plus"></i> Zarezerwuj bez logowania
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="mt-4">
+                        {% if user.is_superuser %}
+                            <div class="row g-3 justify-content-center">
+                                <div class="col-md-4">
+                                    <a href="{% url 'guest:dashboard' %}" class="btn btn-outline-primary btn-lg w-100">
+                                        <i class="bi bi-house-door"></i> Panel Gościa
+                                    </a>
+                                </div>
+                                <div class="col-md-4">
+                                    <a href="{% url 'employee:dashboard' %}" class="btn btn-outline-success btn-lg w-100">
+                                        <i class="bi bi-speedometer2"></i> Panel Pracownika
+                                    </a>
+                                </div>
+                                <div class="col-md-4">
+                                    <a href="/admin/" class="btn btn-outline-warning btn-lg w-100" target="_blank">
+                                        <i class="bi bi-gear"></i> Panel Admin
+                                    </a>
+                                </div>
+                            </div>
+                            <p class="text-muted mt-3">
+                                <small>Jako administrator masz dostęp do wszystkich paneli systemu</small>
+                            </p>
+                        {% elif user.guest_profile %}
+                            <a href="{% url 'guest:dashboard' %}" class="btn btn-primary btn-lg">
+                                <i class="bi bi-house-door"></i> Przejdź do Panelu Gościa
+                            </a>
+                        {% elif user.employee_profile %}
+                            <a href="{% url 'employee:dashboard' %}" class="btn btn-primary btn-lg">
+                                <i class="bi bi-speedometer2"></i> Przejdź do Panelu Pracownika
+                            </a>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

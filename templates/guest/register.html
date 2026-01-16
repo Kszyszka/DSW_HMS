@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}Rejestracja Gościa - HMS{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-6 offset-md-3">
+        <h2><i class="bi bi-person-plus"></i> Rejestracja Gościa</h2>
+        <hr>
+        <div class="card">
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Imię</label>
+                            <input type="text" name="name" class="form-control" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nazwisko</label>
+                            <input type="text" name="surname" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">E-mail</label>
+                        <input type="email" name="email" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Telefon</label>
+                        <input type="text" name="phone" class="form-control">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Nazwa użytkownika (opcjonalnie)</label>
+                        <input type="text" name="username" class="form-control" placeholder="Jeśli puste użyty zostanie e-mail">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Hasło</label>
+                            <input type="password" name="password" class="form-control" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Powtórz hasło</label>
+                            <input type="password" name="password2" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle"></i> Zarejestruj</button>
+                        <a href="{% url 'home' %}" class="btn btn-outline-secondary"><i class="bi bi-x-circle"></i> Anuluj</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
