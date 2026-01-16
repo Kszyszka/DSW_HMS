@@ -1,4 +1,4 @@
-from django.db.models.signals import pre_delete, post_delete
+from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from .models import Reservation, Room
 
@@ -22,18 +22,3 @@ def release_room_on_reservation_delete(sender, instance, **kwargs):
         if not active_reservations.exists():
             # Użyj update zamiast save, aby uniknąć problemów z relacjami
             Room.objects.filter(id=room_id).update(status='available')
-
-
-@receiver(post_delete, sender=Reservation)
-def release_room_on_reservation_delete_backup(sender, instance, **kwargs):
-    """Backup sygnał wywoływany po usunięciu rezerwacji - zwalnia pokój jeśli potrzeba"""
-    # Ten sygnał działa jako backup, gdy pre_delete nie zadziała
-    # Pobierz room_id z kwargs jeśli jest dostępny, lub spróbuj odczytać z instance
-    try:
-        # W post_delete instance już nie ma relacji, więc musimy użyć innego podejścia
-        # Sprawdzamy wszystkie pokoje które mogą być związane z usuniętą rezerwacją
-        # To jest backup - główna logika jest w pre_delete
-        pass
-    except Exception:
-        pass
-

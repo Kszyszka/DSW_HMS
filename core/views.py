@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from .models import Room, Reservation, GuestProfile, EmployeeProfile, Payment, compute_reservation_price, Season, SeasonPrice
 from .decorators import employee_required, guest_required, manager_required
 from django.utils import timezone
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from datetime import datetime
 from django.db import transaction # Import do obsługi transakcji bazodanowych
 import random
