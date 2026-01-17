@@ -18,7 +18,7 @@ def employee_required(view_func):
         if not hasattr(request.user, 'employee_profile'):
             messages.error(request, 'Brak uprawnień. Ta strona jest dostępna tylko dla pracowników.')
             return redirect('home')
-        
+
         return view_func(request, *args, **kwargs)
     return _wrapped_view
 
@@ -38,7 +38,7 @@ def guest_required(view_func):
         if not hasattr(request.user, 'guest_profile'):
             messages.error(request, 'Brak uprawnień. Ta strona jest dostępna tylko dla gości.')
             return redirect('home')
-        
+
         return view_func(request, *args, **kwargs)
     return _wrapped_view
 

@@ -10,7 +10,7 @@ from .models import (
 
 class ReservationTestCase(TestCase):
     """Test 1: Tworzenie rezerwacji - główny model biznesowy"""
-    
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='reservationguest',
@@ -24,7 +24,7 @@ class ReservationTestCase(TestCase):
         )
         self.check_in = date.today() + timedelta(days=7)
         self.check_out = date.today() + timedelta(days=10)
-    
+
     def test_reservation_creation(self):
         """Test tworzenia rezerwacji z wszystkimi polami"""
         reservation = Reservation.objects.create(
@@ -42,14 +42,13 @@ class ReservationTestCase(TestCase):
         self.assertEqual(reservation.room, self.room)
         self.assertEqual(reservation.status, 'pending')
         self.assertEqual(reservation.total_price, Decimal('450.00'))
-        # Test reprezentacji tekstowej
         self.assertIn('Rezerwacja', str(reservation))
         self.assertIn(self.user.username, str(reservation))
 
 
 class ReservationIsPaidTestCase(TestCase):
     """Test 2: Właściwość is_paid dla różnych statusów rezerwacji"""
-    
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='paidguest',
@@ -62,10 +61,9 @@ class ReservationIsPaidTestCase(TestCase):
         )
         self.check_in = date.today() + timedelta(days=5)
         self.check_out = date.today() + timedelta(days=8)
-    
+
     def test_is_paid_property(self):
         """Test właściwości is_paid dla różnych statusów"""
-        # Statusy, które oznaczają opłaconą rezerwację
         paid_statuses = ['confirmed', 'checked_in', 'completed']
         for status in paid_statuses:
             reservation = Reservation.objects.create(
@@ -75,10 +73,9 @@ class ReservationIsPaidTestCase(TestCase):
                 check_out=self.check_out,
                 status=status
             )
-            self.assertTrue(reservation.is_paid, 
+            self.assertTrue(reservation.is_paid,
                           f"Status {status} powinien oznaczać opłaconą rezerwację")
-        
-        # Statusy, które oznaczają nieopłaconą rezerwację
+
         unpaid_statuses = ['pending', 'cancelled']
         for status in unpaid_statuses:
             reservation = Reservation.objects.create(
@@ -94,7 +91,7 @@ class ReservationIsPaidTestCase(TestCase):
 
 class PaymentTestCase(TestCase):
     """Test 3: Tworzenie płatności i relacje z rezerwacją"""
-    
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='paymentguest',
@@ -112,7 +109,7 @@ class PaymentTestCase(TestCase):
             check_out=date.today() + timedelta(days=8),
             total_price=Decimal('600.00')
         )
-    
+
     def test_payment_creation_and_relationship(self):
         """Test tworzenia płatności i relacji z rezerwacją"""
         payment1 = Payment.objects.create(
@@ -127,24 +124,22 @@ class PaymentTestCase(TestCase):
             payment_method='online',
             payment_status='completed'
         )
-        
+
         self.assertIsNotNone(payment1.id)
         self.assertEqual(payment1.amount, Decimal('300.00'))
-        
-        # Test relacji - sprawdź czy można uzyskać płatności przez related_name
+
         payments = self.reservation.payments.all()
         self.assertEqual(payments.count(), 2)
         self.assertIn(payment1, payments)
         self.assertIn(payment2, payments)
-        
-        # Test reprezentacji tekstowej
+
         self.assertIn('Płatność', str(payment1))
         self.assertIn('300.00', str(payment1))
 
 
 class ComputeReservationPriceWithSeasonTestCase(TestCase):
     """Test 4: Obliczanie ceny rezerwacji z sezonem - kluczowa logika biznesowa"""
-    
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='seasonguest',
@@ -160,21 +155,18 @@ class ComputeReservationPriceWithSeasonTestCase(TestCase):
     
     def test_compute_price_with_season(self):
         """Test obliczania ceny z sezonem (mnożnik 1.5)"""
-        # Utwórz sezon
         season = Season.objects.create(
             name='Sezon letni',
             start_date=date(2024, 6, 1),
             end_date=date(2024, 6, 30)
         )
-        
-        # Utwórz cenę sezonową dla pokoju double z mnożnikiem 1.5
+
         SeasonPrice.objects.create(
             season=season,
             room_type='double',
             price_multiplier=Decimal('1.5')
         )
-        
-        # Rezerwacja w sezonie
+
         check_in = date(2024, 6, 10)
         check_out = date(2024, 6, 13)  # 3 noce w sezonie
         

@@ -17,7 +17,6 @@
         .main-content {
             min-height: calc(100vh - 56px);
         }
-        /* Fix: Menu rozwijane nad treścią, a nie rozsuwające ją */
         .dropdown-menu {
             position: absolute !important;
             z-index: 1050;
@@ -38,7 +37,6 @@
                 <ul class="navbar-nav me-auto">
                     {% if user.is_authenticated %}
                         {% if user.is_superuser %}
-                            <!-- Superuser ma dostęp do wszystkich widoków -->
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" id="guestDropdown" role="button" data-bs-toggle="dropdown">
                                     <i class="bi bi-person"></i> Widoki Gościa

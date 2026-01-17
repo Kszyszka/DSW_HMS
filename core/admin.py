@@ -3,10 +3,9 @@ from .models import GuestProfile, Room, Reservation, EmployeeProfile, Season, Se
 
 @admin.register(GuestProfile)
 class GuestProfileAdmin(admin.ModelAdmin):
-    # Dostosowane do modelu GuestProfile (powiązanego z User)
     list_display = ('get_full_name', 'get_email', 'phone_number')
     search_fields = ('user__first_name', 'user__last_name', 'user__email', 'phone_number')
-    
+
     def get_full_name(self, obj):
         return f"{obj.user.first_name} {obj.user.last_name}"
     get_full_name.short_description = 'Imię i Nazwisko'
@@ -19,21 +18,19 @@ class GuestProfileAdmin(admin.ModelAdmin):
 class RoomAdmin(admin.ModelAdmin):
     list_display = ('number', 'room_type', 'status', 'price', 'capacity')
     list_filter = ('status', 'room_type')
-    list_editable = ('status',) # Umożliwia szybką zmianę statusu z listy
+    list_editable = ('status',)
     search_fields = ('number',)
     fieldsets = (
         ('Informacje podstawowe', {
             'fields': ('number', 'room_type', 'capacity', 'price')
         }),
         ('Status', {
-            # Usunąłem 'pin', jeśli nie ma go w modelu Room (zwykle jest w Reservation)
             'fields': ('status', 'notes') 
         }),
     )
 
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
-    # Zaktualizowane nazwy pól (check_in_date -> check_in, price_total -> total_price)
     list_display = ('id', 'guest', 'room', 'check_in', 'check_out', 'status', 'total_price', 'created_at')
     list_filter = ('status', 'check_in', 'check_out', 'created_at')
     search_fields = ('guest__user__last_name', 'guest__user__email', 'room__number')
@@ -53,24 +50,21 @@ class ReservationAdmin(admin.ModelAdmin):
     
     def delete_queryset(self, request, queryset):
         """Przy masowym usuwaniu rezerwacji - logika zwalniania pokoi"""
-        # Zachowana Twoja logika, dostosowana do nazw pól
         rooms_to_release = {}
-        
+
         for reservation in queryset:
             room = reservation.room
-            if room.status in ['occupied']: # Dostosuj statusy wg potrzeb
-                 # Sprawdź czy są inne aktywne rezerwacje
-                 active = Reservation.objects.filter(
+            if room.status in ['occupied']:
+                active = Reservation.objects.filter(
                      room=room,
                      status__in=['pending', 'confirmed', 'checked_in']
-                 ).exclude(id=reservation.id)
-                 
-                 if not active.exists():
-                     rooms_to_release[room.id] = room
+                ).exclude(id=reservation.id)
+
+                if not active.exists():
+                    rooms_to_release[room.id] = room
 
         queryset.delete()
-        
-        # Zwolnij pokoje
+
         for room_id, room in rooms_to_release.items():
             remaining = Reservation.objects.filter(
                 room_id=room_id,
@@ -84,7 +78,6 @@ class PaymentAdmin(admin.ModelAdmin):
     list_display = ('reservation', 'amount', 'payment_date', 'payment_method', 'payment_status')
     list_filter = ('payment_date', 'payment_method', 'payment_status')
 
-# --- NOWE: Obsługa Sezonów i Cen Sezonowych ---
 
 class SeasonPriceInline(admin.TabularInline):
     model = SeasonPrice
@@ -108,7 +101,6 @@ class EmployeeProfileAdmin(admin.ModelAdmin):
     list_filter = ('role',)
     search_fields = ('user__username', 'user__last_name')
 
-# --- Konfiguracja nagłówków panelu admina ---
 admin.site.site_header = "Panel Administracyjny Hotelu XYZ"
 admin.site.site_title = "Hotel XYZ Admin"
 admin.site.index_title = "Witamy w panelu zarządzania"
