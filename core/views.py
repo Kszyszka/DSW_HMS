@@ -14,6 +14,7 @@ import random
 import string
 import re
 import json
+import logging
 from decimal import Decimal
 from django.http import FileResponse
 import io
@@ -502,15 +503,21 @@ def guest_reservation_detail(request, pk):
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'pay_online':
-            Payment.objects.create(
-                reservation=reservation,
-                amount=reservation.total_price,
-                payment_method='online',
-                payment_status='completed'
-            )
-            reservation.status = 'confirmed'
-            reservation.save()
-            messages.success(request, "Płatność przyjęta pomyślnie. Rezerwacja potwierdzona.")
+            try:
+                with transaction.atomic():
+                    Payment.objects.create(
+                        reservation=reservation,
+                        amount=reservation.total_price,
+                        payment_method='online',
+                        payment_status='completed'
+                    )
+                    reservation.status = 'confirmed'
+                    reservation.save()
+                messages.success(request, "Płatność przyjęta pomyślnie. Rezerwacja potwierdzona.")
+            except Exception as e:
+                messages.error(request, "Wystąpił błąd podczas przetwarzania płatności online. Spróbuj ponownie lub skontaktuj się z obsługą.")
+                logger = logging.getLogger(__name__)
+                logger.error(f"Błąd płatności online dla rezerwacji {reservation.id}: {str(e)}", exc_info=True)
             return redirect('guest:reservation_detail', pk=pk)
 
     return render(request, 'guest/reservation_detail.html', {'reservation': reservation})

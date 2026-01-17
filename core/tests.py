@@ -48,7 +48,7 @@ class ReservationTestCase(TestCase):
 
 class ReservationIsPaidTestCase(TestCase):
     """Test 2: Właściwość is_paid dla różnych statusów rezerwacji"""
-
+    
     def setUp(self):
         self.user = User.objects.create_user(
             username='paidguest',
@@ -91,7 +91,7 @@ class ReservationIsPaidTestCase(TestCase):
 
 class PaymentTestCase(TestCase):
     """Test 3: Tworzenie płatności i relacje z rezerwacją"""
-
+    
     def setUp(self):
         self.user = User.objects.create_user(
             username='paymentguest',
@@ -127,19 +127,21 @@ class PaymentTestCase(TestCase):
 
         self.assertIsNotNone(payment1.id)
         self.assertEqual(payment1.amount, Decimal('300.00'))
-
+        
+        # Test relacji - sprawdź czy można uzyskać płatności przez related_name
         payments = self.reservation.payments.all()
         self.assertEqual(payments.count(), 2)
         self.assertIn(payment1, payments)
         self.assertIn(payment2, payments)
-
+        
+        # Test reprezentacji tekstowej
         self.assertIn('Płatność', str(payment1))
         self.assertIn('300.00', str(payment1))
 
 
 class ComputeReservationPriceWithSeasonTestCase(TestCase):
     """Test 4: Obliczanie ceny rezerwacji z sezonem - kluczowa logika biznesowa"""
-
+    
     def setUp(self):
         self.user = User.objects.create_user(
             username='seasonguest',
@@ -152,7 +154,7 @@ class ComputeReservationPriceWithSeasonTestCase(TestCase):
             room_type='double',
             capacity=2
         )
-    
+
     def test_compute_price_with_season(self):
         """Test obliczania ceny z sezonem (mnożnik 1.5)"""
         season = Season.objects.create(
@@ -160,15 +162,17 @@ class ComputeReservationPriceWithSeasonTestCase(TestCase):
             start_date=date(2024, 6, 1),
             end_date=date(2024, 6, 30)
         )
-
+        
+        # Utwórz cenę sezonową dla pokoju double z mnożnikiem 1.5
         SeasonPrice.objects.create(
             season=season,
             room_type='double',
             price_multiplier=Decimal('1.5')
         )
-
+        
+        # Rezerwacja w sezonie
         check_in = date(2024, 6, 10)
-        check_out = date(2024, 6, 13)  # 3 noce w sezonie
+        check_out = date(2024, 6, 13)
         
         reservation = Reservation(
             guest=self.guest,
@@ -178,5 +182,5 @@ class ComputeReservationPriceWithSeasonTestCase(TestCase):
         )
         
         price = compute_reservation_price(reservation)
-        expected_price = 3 * 100.00 * 1.5  # 3 noce * 100 PLN * 1.5
+        expected_price = 3 * 100.00 * 1.5
         self.assertEqual(price, expected_price)
