@@ -122,7 +122,6 @@
 
 {% block extra_js %}
 <script>
-    // Populate guest fields when selecting existing
     const guestSelect = document.getElementById('guest_id');
     const nameInput = document.getElementById('name');
     const surnameInput = document.getElementById('surname');
@@ -145,8 +144,6 @@
             phoneInput.value = opt.dataset.phone || '';
         });
     }
-
-    // Date and availability logic (same as guest create)
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('check_in_date').setAttribute('min', today);
     document.getElementById('check_out_date').setAttribute('min', today);
@@ -163,7 +160,6 @@
     }
 
     async function fetchRoomsForDates(){
-        // Jeśli daty nie są pełne/poprawne, nie pytaj API, tylko filtruj lokalnie to co jest
         if (!datesValid()) return;
         
         roomSelect.innerHTML = '<option value="">Sprawdzam dostępność...</option>';
@@ -192,7 +188,6 @@
 
         let any = false;
 
-        // POPRAWKA: Używamy poprawnej nazwy pola z API
         if ((!data.available_now || data.available_now.length === 0) && (!data.available_later || data.available_later.length === 0)){
             if (data.nearest_available_start){
                 noRoomsAlert.textContent = `Brak wolnych pokoi w danym terminie, najbliższy dostępny termin to ${data.nearest_available_start}`;

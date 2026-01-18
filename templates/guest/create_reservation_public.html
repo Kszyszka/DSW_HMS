@@ -231,7 +231,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Pokazywanie pól konta
     const createCheckbox = document.getElementById('create_account');
     const accountFields = document.getElementById('account_fields');
     if (createCheckbox) {
@@ -240,7 +239,6 @@
         });
     }
 
-    // Ustawienie minimalnej daty na dzisiaj
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('check_in_date').setAttribute('min', today);
     document.getElementById('check_out_date').setAttribute('min', today);
@@ -253,7 +251,6 @@
         }
     });
 
-    // Filtruj pokoje według pojemności
     const numberInput = document.getElementById('number_of_guests');
     const roomSelect = document.getElementById('room_id');
     const noRoomsAlert = document.getElementById('no_rooms_alert');
@@ -291,7 +288,6 @@
     }
 
     async function fetchRoomsForDates(){
-        // If dates are not valid, fallback to local filter
         if (!datesValid()){
             filterRooms();
             return;
@@ -310,7 +306,6 @@
         }
         const data = await res.json();
 
-        // rebuild room select
         roomSelect.innerHTML = '';
         const placeholder = document.createElement('option');
         placeholder.value = '';
@@ -319,10 +314,7 @@
 
         let any = false;
 
-        // Najpierw sprawdź czy w ogóle są jakieś pokoje dostępne w zadanym terminie
-        // POPRAWKA: Sprawdzamy available_now, bo to zwraca API
         if ((!data.available_now || data.available_now.length === 0) && (!data.available_later || data.available_later.length === 0)){
-            // brak dostępności w całym zakresie dni
             if (data.nearest_available_start){
                 noRoomsAlert.textContent = `Brak wolnych pokoi w danym terminie, najbliższy dostępny termin to ${data.nearest_available_start}`;
             } else {
@@ -333,7 +325,6 @@
             return;
         }
 
-        // Są pokoje w tym terminie, sprawdź teraz walidację ilości gości
         if (data.capacity_issue){
             noRoomsAlert.textContent = `Brak dostępnych pokoi dla wybranej liczby gości (${guests}) w tym terminie.`;
             noRoomsAlert.style.display = 'block';
@@ -341,7 +332,6 @@
             return;
         }
 
-        // Pokaż dostępne pokoje spełniające kryteria
         if (data.available_now && data.available_now.length){
             data.available_now.forEach(r=>{
                 const opt = document.createElement('option');
@@ -376,7 +366,6 @@
         checkOutInput.addEventListener('change', fetchRoomsForDates);
     }
 
-    // initial action: run filterRooms() to show something even before selecting dates
     filterRooms();
 </script>
 </body>

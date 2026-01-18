@@ -12,7 +12,6 @@
 </div>
 
 <div class="row">
-    <!-- Kolumna 1: Usterki (Maintenance) -->
     <div class="col-md-6">
         <div class="card shadow-sm border-danger mb-4">
             <div class="card-header bg-danger text-white">
@@ -62,7 +61,6 @@
         </div>
     </div>
 
-    <!-- Kolumna 2: Sprzątanie (Dirty) -->
     <div class="col-md-6">
         <div class="card shadow-sm border-warning mb-4">
             <div class="card-header bg-warning text-dark">
@@ -94,13 +92,11 @@
                                             <i class="bi bi-stars"></i> Posprzątane
                                         </button>
                                     </form>
-                                    
-                                    <!-- Przycisk zgłaszania usterki -->
+                                
                                     <button type="button" class="btn btn-warning btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#reportIssueModal{{ room.id }}">
                                         <i class="bi bi-tools"></i> Zgłoś usterkę
                                     </button>
 
-                                    <!-- Modal Zgłaszania Problemu -->
                                     <div class="modal fade" id="reportIssueModal{{ room.id }}" tabindex="-1" aria-hidden="true">
                                         <div class="modal-dialog">
                                             <div class="modal-content">

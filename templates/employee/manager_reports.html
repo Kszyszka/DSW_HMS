@@ -64,7 +64,7 @@
                                 <td>{{ res.room.number }}</td>
                                 <td>{{ res.check_in|date:"d.m" }} - {{ res.check_out|date:"d.m" }}</td>
                                 <td class="text-danger fw-bold">{{ res.total_price }} PLN</td>
-                                <td>{{ res.created_at|date:"d.m.Y" }}</td> <!-- Uproszczenie: data utworzenia jako ref -->
+                                <td>{{ res.created_at|date:"d.m.Y" }}</td>
                             </tr>
                             {% empty %}
                             <tr><td colspan="6" class="text-center p-4 text-muted">Brak anulowanych rezerwacji.</td></tr>
