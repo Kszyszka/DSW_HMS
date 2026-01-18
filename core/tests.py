@@ -9,8 +9,7 @@ from .models import (
 
 
 class ReservationTestCase(TestCase):
-    """Test 1: Tworzenie rezerwacji - główny model biznesowy"""
-
+    """Test 1: Tworzenie rezerwacji"""
     def setUp(self):
         self.user = User.objects.create_user(
             username='reservationguest',
@@ -48,7 +47,6 @@ class ReservationTestCase(TestCase):
 
 class ReservationIsPaidTestCase(TestCase):
     """Test 2: Właściwość is_paid dla różnych statusów rezerwacji"""
-    
     def setUp(self):
         self.user = User.objects.create_user(
             username='paidguest',
@@ -91,7 +89,6 @@ class ReservationIsPaidTestCase(TestCase):
 
 class PaymentTestCase(TestCase):
     """Test 3: Tworzenie płatności i relacje z rezerwacją"""
-    
     def setUp(self):
         self.user = User.objects.create_user(
             username='paymentguest',
@@ -133,15 +130,13 @@ class PaymentTestCase(TestCase):
         self.assertEqual(payments.count(), 2)
         self.assertIn(payment1, payments)
         self.assertIn(payment2, payments)
-        
-        # Test reprezentacji tekstowej
+
         self.assertIn('Płatność', str(payment1))
         self.assertIn('300.00', str(payment1))
 
 
 class ComputeReservationPriceWithSeasonTestCase(TestCase):
     """Test 4: Obliczanie ceny rezerwacji z sezonem - kluczowa logika biznesowa"""
-    
     def setUp(self):
         self.user = User.objects.create_user(
             username='seasonguest',
@@ -162,8 +157,7 @@ class ComputeReservationPriceWithSeasonTestCase(TestCase):
             start_date=date(2024, 6, 1),
             end_date=date(2024, 6, 30)
         )
-        
-        # Utwórz cenę sezonową dla pokoju double z mnożnikiem 1.5
+
         SeasonPrice.objects.create(
             season=season,
             room_type='double',

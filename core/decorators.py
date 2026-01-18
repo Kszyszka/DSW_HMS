@@ -4,14 +4,14 @@ from django.contrib import messages
 
 
 def employee_required(view_func):
-    """Dekorator wymagający, aby użytkownik był pracownikiem lub superuserem"""
+    """Dekorator wymagający, aby użytkownik był pracownikiem lub adminem"""
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
         if not request.user.is_authenticated:
             messages.error(request, 'Musisz być zalogowany, aby uzyskać dostęp do tej strony.')
             return redirect('login')
         
-        # Superuser ma dostęp do wszystkich widoków
+        # Admin ma dostęp do wszystkich widoków
         if request.user.is_superuser:
             return view_func(request, *args, **kwargs)
         
@@ -24,14 +24,13 @@ def employee_required(view_func):
 
 
 def guest_required(view_func):
-    """Dekorator wymagający, aby użytkownik był gościem lub superuserem"""
+    """Dekorator wymagający, aby użytkownik był gościem"""
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
         if not request.user.is_authenticated:
             messages.error(request, 'Musisz być zalogowany, aby uzyskać dostęp do tej strony.')
             return redirect('login')
-        
-        # Superuser ma dostęp do wszystkich widoków
+
         if request.user.is_superuser:
             return view_func(request, *args, **kwargs)
         

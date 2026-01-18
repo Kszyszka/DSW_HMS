@@ -10,7 +10,6 @@ urlpatterns = [
     path('reservations/public/', views.public_create_reservation, name='create_reservation_public'),
     path('reservations/<int:pk>/', views.guest_reservation_detail, name='reservation_detail'),
     path('reservations/<int:pk>/cancel/', views.guest_cancel_reservation, name='cancel_reservation'),
-    
     path('profile/', views.guest_profile, name='profile'),
     path('register/', views.register_view, name='register'),
 ]

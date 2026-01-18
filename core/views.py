@@ -24,8 +24,6 @@ try:
 except ImportError:
     canvas = None
 
-# Authentication Views
-
 def login_view(request):
     if request.method == 'POST':
         username = request.POST.get('username')
@@ -64,8 +62,6 @@ def clean_text(text):
     for k, v in replacements.items():
         text = text.replace(k, v)
     return text
-
-# Employee Views
 
 @login_required
 @employee_required
@@ -471,8 +467,6 @@ def employee_create_reservation(request):
     return render(request, 'employee/create_reservation.html', {'guests': guests, 'available_rooms': rooms})
 
 
-# Guest Views
-
 @login_required
 @guest_required
 def guest_dashboard(request):
@@ -621,9 +615,6 @@ def guest_cancel_reservation(request, pk):
             messages.error(request, "Nie można anulować tej rezerwacji (zbyt późno lub zły status).")
 
     return redirect('guest:reservation_detail', pk=pk)
-
-
-# Public Views
 
 def register_view(request):
     if request.method == 'POST':
@@ -798,8 +789,6 @@ def employee_maintenance(request):
     dirty_rooms = Room.objects.filter(status='dirty').order_by('number')
     return render(request, 'employee/maintenance.html', {'maintenance_rooms': maintenance_rooms, 'dirty_rooms': dirty_rooms})
 
-
-# Manager Views
 
 @login_required
 
@@ -1032,7 +1021,7 @@ def employee_room_create(request):
     return render(request, 'employee/room_create.html')
 
 
-# API Views
+# API
 
 def room_availability_api(request):
     """API zwracające dostępne pokoje w zadanym terminie (JSON)."""
