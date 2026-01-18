@@ -26,7 +26,7 @@ How to start HMS?
      python .\manage.py makemigrations
      ```
    * ```
-     python .
+     python .\manage.py migrate
      ```
 6. Prepare a superuser (admin) for your instance
    * ```
